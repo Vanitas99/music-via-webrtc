@@ -20,6 +20,7 @@ const DISABLED_COLOR = "rgb(182, 0, 0)";
 
 const populateDeviceList= async (kind: MediaDeviceKind, obj: HTMLUListElement) => {
     const devices = await navigator.mediaDevices.enumerateDevices();
+    devices.forEach(d => console.log(d.kind));
     while (obj.firstChild) {
         obj.removeChild(obj.firstChild);
     }
@@ -31,10 +32,11 @@ const populateDeviceList= async (kind: MediaDeviceKind, obj: HTMLUListElement) =
     }
 
     const functions = {
-        "audioinput" : (e: MouseEvent) => {
+        "audioinput" : async (e: MouseEvent) => {
             console.log("AUDIO IN");
             let element = (e.target as HTMLAnchorElement);
             currentMic = element.id;
+            await navigator.mediaDevices.getUserMedia({audio: {deviceId: element.id}});
             let bMic = document.querySelector("#selectMic");
         },
         "audiooutput" : (e: MouseEvent) => {
@@ -49,6 +51,7 @@ const populateDeviceList= async (kind: MediaDeviceKind, obj: HTMLUListElement) =
 
     devices.filter( device => device.kind === kind).forEach( 
         device => {
+            
             let newEntry = document.createElement("li");
             let a = document.createElement("a");
             a.className = "dropdown-item ";
