@@ -6,9 +6,9 @@
     "configurations": [
 
         {
-            "type": "firefox",
+            "type": "chrome",
             "request": "launch",
-            "name": "Launch Firefox against localhost",
+            "name": "Launch Chrome against localhost",
             "url": "http://localhost:8080",
             "file": "${workspaceFolder}/dist/index.html"
 
