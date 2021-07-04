@@ -1,6 +1,8 @@
 import { io, Socket } from "socket.io-client";
 import { Toast } from "bootstrap";
 
+let isDev = process.env.NODE_ENV != "production";
+
 type MuteState = "muted" | "unmuted";
 type SharingState = "sharing" | "not-sharing";
 
@@ -20,13 +22,15 @@ let deviceSelections: HTMLUListElement[] = [];
 let localStream: MediaStream;
 let remoteStreams: MediaStream[] = [];
 
+const API_URL = location.origin.replace('http', 'ws');
+
 const MIC_MUTE_URL = "url(\"../Public/microphone-mute.svg\")";
 const MIC_UNMUTE_URL = "url(\"../Public//microphone-unmute.svg\")";
 const SPEAKER_MUTE_URL = "url(\"../Public/speaker-mute.svg\")";
 const SPEAKER_UNMUTE_URL = "url(\"../Public/speaker-unmute.svg\")";
 
 const ENABLED_COLOR = "rgb(152, 226, 41)";
-const DISABLED_COLOR = "rgb(182, 0, 0)";
+const DISABLED_COLOR = "rgb(182, 0, 0";
 
 // Free public STUN servers provided by Google.
 const iceServers = {
@@ -214,7 +218,7 @@ const addTrackToStream = (stream: MediaStream, track: MediaStreamTrack) => {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-    const socket = io('ws://localhost:9000/');
+    const socket = io();
     setupUi(socket);
     try {
         await setLocalStream(true, {width: 100, height: 100});

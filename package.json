@@ -1,0 +1,49 @@
+{
+  "name": "music-webrtc",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "watch": "tsc -w",
+    "build": "tsc && webpack",
+    "start": "node dist/server/server.js",
+    "dev": "cross-env WEBPACK_WATCH=development concurrently \"webpack\" \"tsc --watch\" \"nodemon ./dist/server/server.js\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": "16.4.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "-": "^0.0.1",
+    "bootstrap": "^5.0.2",
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "socket.io": "^4.1.2",
+    "socket.io-client": "^4.1.2",
+    "uuid": "^8.3.2"
+  },
+  "devDependencies": {
+    "@types/bootstrap": "^5.0.16",
+    "@types/cors": "^2.8.10",
+    "@types/express": "^4.17.12",
+    "@types/socket.io": "^3.0.2",
+    "@types/socket.io-client": "^3.0.0",
+    "@types/uuid": "^8.3.0",
+    "@types/webrtc": "^0.0.28",
+    "concurrently": "^6.2.0",
+    "cross-env": "^7.0.3",
+    "html-webpack-plugin": "^5.3.2",
+    "nodemon": "^2.0.9",
+    "ts-loader": "^9.2.3",
+    "typescript": "^4.3.4",
+    "webpack": "^5.42.0",
+    "webpack-cli": "^4.7.2",
+    "webpack-dev-server": "^3.11.2",
+    "webpack-emit-all-plugin": "^2.0.1",
+    "webrtc-adapter": "^8.0.0"
+  }
+}

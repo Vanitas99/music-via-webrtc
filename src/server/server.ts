@@ -2,8 +2,9 @@ import express, { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { Server, Socket } from "socket.io";
 import http from "http";
-
+import path from 'path';
 import cors from "cors";
+import { dir } from "console";
 
 type MuteState = "muted" | "unmuted";
 type User = {
@@ -17,18 +18,17 @@ type RoomState = {
 }
 
 const port = process.env.PORT || 9000;
-
 let rooms: Map<string, RoomState> = new Map();
+
+console.log(path.resolve());
 
 const app = express();
 const httpServer = http.createServer(app);
 app.use(cors());
-const io = new Server(httpServer, {
-    cors: {
-      origin: "http://127.0.0.1:5500",
-      methods: ["GET", "POST"]
-    }
-  });
+app.use("/Public", express.static(path.join(path.resolve() ,'/Public')));
+app.use("/index.js", express.static(path.join(path.resolve(), "/dist/index.js")));
+
+const io = new Server(httpServer);
 
 const setupUser = (socket: Socket) => {
 
@@ -74,9 +74,13 @@ const setupUser = (socket: Socket) => {
 io.on("connection", (socket) => {
     console.log(`New user connected with new id: ${socket.id}`);
     socket.on("disconnect", () => {
-        console.log(`User ${socket.id} disconnected!!!!`);
+        console.log(`User ${socket.id} disconnected!`);
     })
     setupUser(socket);
 })
+
+app.get("/", (req, res) => {
+    res.sendFile(path.join(path.resolve(), "/dist/index.html"));
+});
 
 httpServer.listen(port, () => {console.log(`Listening on port ${port}`)});

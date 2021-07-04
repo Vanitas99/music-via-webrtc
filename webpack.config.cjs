@@ -1,10 +1,12 @@
 const path = require('path');
 const HtmlPlugin = require('html-webpack-plugin');
 
-module.exports = {
-    entry: './src/index.ts',
-    devtool: 'inline-source-map',
-    watch: true,
+const production = process.env.NODE_ENV == "production";
+console.log(production);
+module.exports = [{
+    entry: './src/client/index.ts',
+    devtool: production ? 'inline-source-map' : 'nosources-source-map',
+    watch: !production,
     output: {
       path: path.resolve('dist'),
       filename: 'index.js',
@@ -23,8 +25,8 @@ module.exports = {
     },
     plugins: [
         new HtmlPlugin({
-            template: './src/index.html',
+            template: './src/client/index.html',
             inject: true
         })
-    ]
-  };
+    ]},
+];
