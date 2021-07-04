@@ -2,21 +2,36 @@
   "name": "music-webrtc",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "watch": "tsc -w",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "webpack",
+    "dev": "webpack serve",
+    "start": "node dist/src/server.js"
+  },
+  "engines": {
+    "node" : "16.4.0"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "-": "^0.0.1",
-    "@types/webrtc": "^0.0.28",
-    "typescript": "^4.3.4"
+    "bootstrap": "^5.0.2",
+    "socket.io-client": "^4.1.2"
+    
   },
   "devDependencies": {
+    "@types/webrtc": "^0.0.28",
+    "@types/bootstrap": "^5.0.16",
+    "@types/socket.io-client": "^3.0.0",
+    "html-webpack-plugin": "^5.3.2",
+    "ts-loader": "^9.2.3",
+    "typescript": "^4.3.4",
     "webpack": "^5.42.0",
+    "webpack-cli": "^4.7.2",
+    "webpack-dev-server": "^3.11.2",
     "webrtc-adapter": "^8.0.0"
   }
 }
