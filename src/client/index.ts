@@ -1,5 +1,7 @@
 import { io, Socket } from "socket.io-client";
-import { Toast } from "bootstrap";
+import { Toast , Modal} from "bootstrap";
+import { connect } from "http2";
+import { Stream } from "stream";
 
 let isDev = process.env.NODE_ENV != "production";
 
@@ -18,6 +20,9 @@ let currentCam: string;
 let connections: RTCPeerConnection[] = [];
 let remoteStream = new MediaStream();
 let deviceSelections: HTMLUListElement[] = [];
+
+let entryModal: Modal;
+let roomIdToJoin: string;
 
 let localStream: MediaStream;
 let remoteStreams: MediaStream[] = [];
@@ -76,49 +81,52 @@ const populateDeviceList= async () => {
 
 const setupUi = (socket: Socket) => {
 
-    let bMic = document.querySelector("#micButton") as HTMLButtonElement;
-    bMic?.addEventListener('click', (e) => {
-        const element = (e.target as HTMLButtonElement);
+    let bMic = $("#micButton");
+    bMic?.on('click', (e) => {
+        const element = e.target;
         localMicState = localMicState == "muted" ? "unmuted" : "muted";
         ((document.querySelector('#localVideo') as HTMLVideoElement).srcObject as MediaStream).getAudioTracks()[0].enabled = localMicState == "unmuted";
 
         element.style.backgroundImage = localMicState == "muted" ? MIC_MUTE_URL : MIC_UNMUTE_URL;
         element.style.backgroundColor = localMicState == "muted" ? DISABLED_COLOR : ENABLED_COLOR;
     });
-    bMic.style.backgroundImage = MIC_MUTE_URL;
-    bMic.style.backgroundColor = DISABLED_COLOR;
+    bMic.css("backgroundColor", MIC_MUTE_URL);
+    bMic.css("backgroundColor", DISABLED_COLOR);
 
-    let bSpeaker = document.querySelector("#speakerButton") as HTMLButtonElement;
-    bSpeaker?.addEventListener('click', (e) => {
+    let bSpeaker = $("#speakerButton");
+    bSpeaker?.on('click', (e) => {
         const element = (e.target as HTMLButtonElement);
         
         localSpeakerState = localSpeakerState == "muted" ? "unmuted" : "muted";
         element.style.backgroundImage = localSpeakerState == "muted" ? SPEAKER_MUTE_URL : SPEAKER_UNMUTE_URL;
         element.style.backgroundColor = localSpeakerState == "muted" ? DISABLED_COLOR : ENABLED_COLOR;
+
+        remoteStreams.forEach(stream => {
+            stream.getAudioTracks().forEach(track => {
+                track.enabled = localSpeakerState == "unmuted";
+            })
+        })
     });
-    bSpeaker.style.backgroundImage = SPEAKER_UNMUTE_URL;
-    bSpeaker.style.backgroundColor = ENABLED_COLOR;
+    bSpeaker.css("backgroundImage", SPEAKER_UNMUTE_URL);
+    bSpeaker.css("backgroundColor", ENABLED_COLOR);
 
 
-    let bScreenSharing = document.querySelector("#screenshareButton") as HTMLButtonElement;
-    bScreenSharing?.addEventListener('click', (e) => {
+    let bScreenSharing = $("#screenshareButton");
+    bScreenSharing?.on('click', (e) => {
         const element = (e.target as HTMLButtonElement);
         localSSState = localSSState == "not-sharing" ? "sharing" : "not-sharing";
         element.style.backgroundColor = localSSState == "sharing" ? ENABLED_COLOR : "";
     });
 
 
-    let bCam = document.querySelector("#camButton") as HTMLButtonElement;
-    bCam?.addEventListener('click', (e) => {
+    let bCam = $("#camButton");
+    bCam?.on('click', (e) => {
         const element = (e.target as HTMLButtonElement);
         localCamSate = localCamSate == "sharing" ? "not-sharing" : "sharing";
         element.style.backgroundColor = localCamSate == "sharing" ? ENABLED_COLOR : "";
-        if (localCamSate == "sharing") {
-            setLocalStream(true, {width: 1920, height: 1080
-            });
-        } else {
-            (document.querySelector('#localVideo') as HTMLVideoElement).srcObject = null;
-        }
+        localStream.getVideoTracks().forEach(track => {
+            track.enabled = localCamSate == "sharing";
+        });
     });
     deviceSelections.push(
         document.querySelector("#micSelection")!,
@@ -127,35 +135,37 @@ const setupUi = (socket: Socket) => {
     );
     populateDeviceList();
 
-    let bJoinRoom = document.querySelector("#joinRoom") as HTMLButtonElement;
-    bJoinRoom.addEventListener("click", (e) => {
+    let bJoinRoom = $(".joinRoom");
+    bJoinRoom.on("click", (e) => {
         if (socket.connected) {
             socket.on("you-joined-room", (roomId: string) => {
                 console.log(`You joined room ${roomId}`);
+                entryModal.hide();
+                entryModal.dispose();
             });
-            const id = (document.querySelector("#roomId") as HTMLTextAreaElement).value;
+            const id = roomIdToJoin ? roomIdToJoin : $("#roomId").val();
+            const userName = $(".user-name-input").val();
             console.log(id);
-            socket.emit("join-room", {id: id, state: localMicState});
+            console.log(userName);
+            socket.emit("join-room", id, userName, localMicState);
 
         } else {
             alert("Not connected to webserver");
         }
     });
 
-    let bCreateRoom = document.querySelector("#createRoom") as HTMLButtonElement;
-    bCreateRoom.addEventListener("click", () => {
+    let bCreateRoom = $("#createRoom");
+    bCreateRoom.on("click", () => {
         if (socket.connected) {
             socket.on("new-room-created", (roomId: string) => {
                 console.log(roomId);
-                let toastElement = document.querySelector("#roomIdToast");
-                let toastBody = document.querySelector("#roomIdToastBody");
-                toastBody!.textContent = roomId;
-                const toast = new Toast(toastElement!,{animation: true, delay: 10000});
-                toast.show();
+                entryModal.hide();
+                entryModal.dispose();
             });
-            socket.emit("new-room");
+            const userName = $(".user-name-input").val();
+            socket.emit("new-room", userName, localMicState);
         } else {
-            alert("Not connected to webserver");
+           
         }
     });
 
@@ -190,8 +200,9 @@ const setupUi = (socket: Socket) => {
             await sendOffer(conn, socket, roomId);
             
     });
-
-   
+    socket.on("participant-left", (id: string) => {
+        console.log("Participant left: " + id);
+    });
 
 }
 
@@ -212,22 +223,14 @@ const setRemoteStream = (stream: MediaStream) => {
     (document.querySelector('#remoteVideo') as HTMLVideoElement).srcObject = stream;
 };
 
+const removeRemoteStream = () => {
+    (document.querySelector('#remoteVideo') as HTMLVideoElement).srcObject = null;
+};
+
 const addTrackToStream = (stream: MediaStream, track: MediaStreamTrack) => {
 
     stream.addTrack(track);
 }
-
-document.addEventListener("DOMContentLoaded", async () => {
-    const socket = io();
-    setupUi(socket);
-    try {
-        await setLocalStream(true, {width: 100, height: 100});
-        await setRemoteStream(remoteStream);
-    } catch (err) {
-        console.error(err);
-    }
-    console.log("Finished Loading");
-});
 
 const setupPeerConnection = (socket: Socket) : RTCPeerConnection => {
     let conn = new RTCPeerConnection(iceServers);
@@ -245,7 +248,6 @@ const setupPeerConnection = (socket: Socket) : RTCPeerConnection => {
         if (e.candidate) {
             socket.emit("ice-candidates", JSON.stringify(e.candidate));
         }
-        
     }
 
     socket.on("ice-candidates", (candidate: string) => {
@@ -285,4 +287,66 @@ const sendAnwser = async (rtcPeerConnection: RTCPeerConnection, socket: Socket, 
         return;
     }
 };
+
+const onSocketConnection = (state: "connected" | "error") => {
+    let toastElement = $("#connectionToast");
+    if (state == "connected") {
+        $("#connectionToastHeader").addClass("bg-success");
+        $("#connectionToast").addClass("bg-success");
+        $("#connectionToastBody").text("You are connected to the webserver!");
+
+    } else {
+        $("#connectionToastHeader").addClass("bg-danger");
+        $("#connectionToast").addClass("bg-danger");
+        $("#connectionToastBody").text("You are not connected to the webserver!");
+
+    }  
+    const toast = new Toast(toastElement[0],{animation: true, delay: 10000});
+    toast.hide();
+    toast.show();
+};
+
+const setupGeneralModal = () => {
+    const modal = $("#generalModal");
+    entryModal = new Modal(modal![0], { "backdrop": "static", "keyboard": false });
+    entryModal.show();
+};
+
+
+const setupJoinModal = () => {
+    const modal = $("#joinRoomModal");
+    entryModal = new Modal(modal![0], { "backdrop": "static", "keyboard": false });
+    entryModal.show();
+};
+
+const  setupWebsocketConnection = () => {
+    const socket = io();
+    socket.on("connect", () => { onSocketConnection("connected"); });
+    socket.on("disconnect", () => { onSocketConnection("error"); });
+    return socket;
+};
+
+document.addEventListener("DOMContentLoaded", async () => {
+    const roomId = new URLSearchParams(window.location.search).get("roomId");
+    if (roomId) {
+        console.log("We have joined Room via URL");
+        roomIdToJoin = roomId;
+        setupJoinModal();
+    } else {
+        setupGeneralModal();
+    }
+
+    const socket = setupWebsocketConnection();
+    setupUi(socket);
+
+    try {
+        await setLocalStream(true, {width: 100, height: 100});
+        await setRemoteStream(remoteStream);
+    } catch (err) {
+        console.error(err);
+    }
+
+    console.log("Finished Loading");
+});
+
 

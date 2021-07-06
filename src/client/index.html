@@ -9,16 +9,64 @@
 </head>
 
 <body >
-    <div class="container" style="width:100%; ">
-        <div class="row justify-content-center" style="height: 15vh; align-content: center;">
-            <div class="input-group" style="width: 80%; max-width: 600px;">
-                <input type="text" class="form-control" id="roomId" placeholder="Music Rooms UUID"/>
-                <div class="input-group-prepend">
-                    <button class="btn btn-primary" id="joinRoom">Join</span>
-                  </div>
-              </div>
-              <button class="btn btn-primary" id="createRoom" style="width: 80%; max-width: 600px;">Create new Room</button>
+    <div>
+        <div id="generalModal" class="modal align-middle" tabindex="-1" role="dialog">
+            <div class="modal-dialog h-100 d-flex flex-column justify-content-center my-0" role="document">
+                <div class="modal-content">
+                    <div class="modal-body">
+                        <div class="container">
+                            <div class="row justify-content-center my-4">
+                                <input type="text" class="form-control user-name-input" placeholder="Your name"/>
+                            </div>
+                            <div class="row justify-content-center my-4">
+                                <div class="input-group px-0">
+                                    <input type="text" class="form-control" id="roomId" placeholder="Music Rooms UUID"/>
+                                    <div class="input-group-prepend">
+                                        <button class="btn btn-primary joinRoom" id="joinRoom">Join</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row justify-content-center my-4">
+                                <button class="btn btn-primary" id="createRoom" style="width: 50%;">Create new Room</button>
+                            </div>
+                        </div>
+                    </div>    
+                </div>
+            </div>
         </div>
+        <div id="joinRoomModal" class="modal align-middle" tabindex="-1" role="dialog">
+            <div class="modal-dialog h-100 d-flex flex-column justify-content-center my-0" role="document">
+                <div class="modal-content">
+                    <div class="modal-body">
+                        <div class="container">
+                            <div class="row justify-content-center my-4">
+                                <input type="text" class="form-control user-name-input" placeholder="Your name"/>
+                            </div>
+                            <div class="row justify-content-center my-4">
+                                <div class="input-group px-0">
+                                    <div class="input-group-prepend">
+                                        <button class="btn btn-primary joinRoom" id="joinRoom">Join</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>    
+                </div>
+            </div>
+        </div>
+        <div class="position-fixed top-0 end-0" aria-live="assertive" aria-atomic="true" style="z-index: 9999999;; padding: 3% 3% 0 0;">
+            <div id="connectionToast" class="toast hide text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+              <div id="connectionToastHeader"class="toast-header text-white bg-primary">
+                <strong class="me-auto">WEBSERVER CONNECTION</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+              </div>
+              <div id="connectionToastBody" class="toast-body">
+              </div>
+            </div>
+        </div> 
+    </div>
+    
+    <div id="mainPage" class="container" style="width:100%; ">
         <div id="videos" style="align-content: center; height: 75vh;" class="row justify-content-center">
             <div class="col-6 d-flex justify-content-center videos" style="box-shadow: 0 0 20px rgb(0,0,0);">
                 <video muted autoplay playsinline id="localVideo" style="margin: auto; width: 100%; height: 100%; ;"></video>
@@ -56,16 +104,7 @@
                 </div>
             </div>
         </div>
-        <div class="position-fixed top-0 end-0" aria-live="assertive" aria-atomic="true" style="z-index: 11; padding: 3% 3% 0 0;">
-            <div id="roomIdToast" class="toast hide text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
-              <div class="toast-header text-white bg-primary">
-                <strong class="me-auto">ROOM CREATED</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
-              </div>
-              <div id="roomIdToastBody" class="toast-body">
-              </div>
-            </div>
-        </div>
+       
     </div>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
