@@ -17,7 +17,6 @@ let currentMic: string;
 let currentSpeaker: string;
 let currentCam: string;
 
-let connections: RTCPeerConnection[] = [];
 let remoteStream = new MediaStream();
 let deviceSelections: HTMLUListElement[] = [];
 
@@ -25,8 +24,12 @@ let entryModal: Modal;
 let roomIdToJoin: string;
 
 let localStream: MediaStream;
-let remoteStreams: MediaStream[] = [];
-
+let remoteConnections: Map<string, {
+    userName: string,
+    muteState: MuteState,
+    connection: RTCPeerConnection,
+    stream: MediaStream
+}> = new Map();
 const API_URL = location.origin.replace('http', 'ws');
 
 const MIC_MUTE_URL = "url(\"../Public/microphone-mute.svg\")";
@@ -101,8 +104,8 @@ const setupUi = (socket: Socket) => {
         element.style.backgroundImage = localSpeakerState == "muted" ? SPEAKER_MUTE_URL : SPEAKER_UNMUTE_URL;
         element.style.backgroundColor = localSpeakerState == "muted" ? DISABLED_COLOR : ENABLED_COLOR;
 
-        remoteStreams.forEach(stream => {
-            stream.getAudioTracks().forEach(track => {
+        remoteConnections.forEach(conn => {
+            conn.stream.getAudioTracks().forEach(track => {
                 track.enabled = localSpeakerState == "unmuted";
             })
         })
@@ -144,7 +147,7 @@ const setupUi = (socket: Socket) => {
                 entryModal.dispose();
             });
             const id = roomIdToJoin ? roomIdToJoin : $("#roomId").val();
-            const userName = $(".user-name-input").val();
+            const userName = $("#activeEntryModal").find("input").val();
             console.log(id);
             console.log(userName);
             socket.emit("join-room", id, userName, localMicState);
@@ -162,49 +165,54 @@ const setupUi = (socket: Socket) => {
                 entryModal.hide();
                 entryModal.dispose();
             });
-            const userName = $(".user-name-input").val();
+            const userName = $("#activeEntryModal").find("input").val();
             socket.emit("new-room", userName, localMicState);
         } else {
            
         }
     });
 
-    socket.on("err-room-not-found", () => {
-        alert("Room does not exist!");
+    socket.on("err-join-room", (msg: string) => {
+        alert(msg);
     })
 
-    socket.on("webrtc-offer", async (sdp: string, roomId: string) => {
+    socket.on("webrtc-offer", async (userId: string, userName: string, sdp: string) => {
         console.log("Received Offer from Room Owner!");
         let remoteSdp : RTCSessionDescriptionInit = JSON.parse(sdp);
-        let conn = setupPeerConnection(socket);
-        connections.push(conn);
+        let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
         try {
             await conn.setRemoteDescription(remoteSdp);
-            await sendAnwser(conn, socket, roomId);
+            await sendAnwser(conn, socket);
         } catch (err) {
             console.error(err);
         }
     });
 
-    socket.on("webrtc-answer", async (sdp: string, roomId: string) => {
+    socket.on("webrtc-answer", async (userId: string, sdp: string) => {
         let remoteSdp: RTCSessionDescriptionInit = JSON.parse(sdp);
         console.log("Received Answer from Participant: " + sdp);
-        await connections[0].setRemoteDescription(remoteSdp);
+        await remoteConnections.get(userId)!.connection.setRemoteDescription(remoteSdp);
     });
 
-    socket.on("new-participant", async ({ userId, roomId, userName, audio }
-        : {userId: string, roomId: string, userName: string, audio: MuteState}) => {
-            console.log(`User ${userName} (${userId}) joined the room ${roomId}`);
-            let conn = setupPeerConnection(socket);
-            connections.push(conn);
-            await sendOffer(conn, socket, roomId);
+    socket.on("new-participant", async (userId: string, userName:string, state: MuteState) => {
+            console.log(`User ${userName} (${userId}) joined the room`);
+            let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
+            await sendOffer(conn, socket);
             
     });
     socket.on("participant-left", (id: string) => {
         console.log("Participant left: " + id);
     });
+    socket.on("user-changed-mute-state", (userId: string, newState: MuteState) => {
+        remoteConnections.get(userId)!.muteState = newState;
+        setMuteInUi(userId);
+    });
 
-}
+};
+
+const setMuteInUi = (id: string) => {
+    $("#remoteMuteIcon-" + id).attr("src", remoteConnections.get(id)!.muteState == "muted" ? MIC_MUTE_URL : MIC_UNMUTE_URL) ; 
+};
 
 const setLocalStream = async (audio: boolean, {width, height}: {width: number, height: number}) => {
     try {
@@ -219,31 +227,40 @@ const setLocalStream = async (audio: boolean, {width, height}: {width: number, h
     };
 };
 
-const setRemoteStream = (stream: MediaStream) => {
-    (document.querySelector('#remoteVideo') as HTMLVideoElement).srcObject = stream;
-};
-
-const removeRemoteStream = () => {
-    (document.querySelector('#remoteVideo') as HTMLVideoElement).srcObject = null;
-};
-
 const addTrackToStream = (stream: MediaStream, track: MediaStreamTrack) => {
-
     stream.addTrack(track);
 }
 
-const setupPeerConnection = (socket: Socket) : RTCPeerConnection => {
+const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: string, userName: string}) : RTCPeerConnection => {
     let conn = new RTCPeerConnection(iceServers);
+    const remoteStream = new MediaStream();
+    remoteConnections.set(userId, {
+        connection: conn,
+        muteState: "muted",
+        stream: remoteStream,
+        userName: userName
+    });
+
+    const newVidHtml = 
+    `<div class="col-6 d-flex justify-content-center videos" style="position:relative; box-shadow: 0 0 20px  rgb(0, 0, 0) ">`+
+                    `<video autoplay playsinline id="remoteVideo-${userId}" style="margin: auto; height: 100%; width: 100%;"></video>` + 
+                    `<img id="remoteMuteIcon" src=${MIC_UNMUTE_URL} style="left: 0; bottom: 0;"></img>`+
+                    `<span style="background-color: darkgrey; color: white; position: absolute; bottom: 0; left: 0;">${userName}</span>` +
+                `</div>`;
+    console.log(newVidHtml);
+    $("#videoContainer").append(newVidHtml);
+
     localStream.getTracks().forEach(track => {
         conn.addTrack(track);
     });
     conn.ontrack = (trackEvent) => {
-        console.log(trackEvent);
+        const remoteStream = remoteConnections.get(userId)!.stream;
         addTrackToStream(remoteStream, trackEvent.track);
     }
     conn.onnegotiationneeded = e => {
+        console.log("Negotiation is needed!");
         if (conn.signalingState != "stable") return;
-      }
+    }
     conn.onicecandidate = async (e) => {
         if (e.candidate) {
             socket.emit("ice-candidates", JSON.stringify(e.candidate));
@@ -259,13 +276,14 @@ const setupPeerConnection = (socket: Socket) : RTCPeerConnection => {
     return conn;
 }
 
-const sendOffer = async (rtcPeerConnection: RTCPeerConnection, socket: Socket, roomId: string) => {
+const sendOffer = async (rtcPeerConnection: RTCPeerConnection, socket: Socket) => {
     let sessionDescription;
     try {
         sessionDescription = await rtcPeerConnection.createOffer();
         rtcPeerConnection.setLocalDescription(sessionDescription);
         console.log(sessionDescription.sdp);
-        socket.emit('webrtc-offer', JSON.stringify(sessionDescription), roomId);
+        const myUserName = $(".user-name-input").val();
+        socket.emit('webrtc-offer', JSON.stringify(sessionDescription), myUserName);
 
     } catch (error) {
       console.error(error);
@@ -274,13 +292,12 @@ const sendOffer = async (rtcPeerConnection: RTCPeerConnection, socket: Socket, r
 
   };
 
-
-const sendAnwser = async (rtcPeerConnection: RTCPeerConnection, socket: Socket, roomId: string ) => {
+const sendAnwser = async (rtcPeerConnection: RTCPeerConnection, socket: Socket) => {
     let sessionDescription: RTCSessionDescriptionInit;
     try {
         sessionDescription = await rtcPeerConnection.createAnswer();
         rtcPeerConnection.setLocalDescription(sessionDescription);
-        socket.emit("webrtc-answer", JSON.stringify(sessionDescription), roomId);
+        socket.emit("webrtc-answer", JSON.stringify(sessionDescription));
 
     } catch (error) {
         console.error(error);
@@ -308,6 +325,7 @@ const onSocketConnection = (state: "connected" | "error") => {
 
 const setupGeneralModal = () => {
     const modal = $("#generalModal");
+    modal.attr("id", "activeEntryModal");
     entryModal = new Modal(modal![0], { "backdrop": "static", "keyboard": false });
     entryModal.show();
 };
@@ -315,6 +333,7 @@ const setupGeneralModal = () => {
 
 const setupJoinModal = () => {
     const modal = $("#joinRoomModal");
+    modal.attr("id", "activeEntryModal");
     entryModal = new Modal(modal![0], { "backdrop": "static", "keyboard": false });
     entryModal.show();
 };
@@ -340,8 +359,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupUi(socket);
 
     try {
-        await setLocalStream(true, {width: 100, height: 100});
-        await setRemoteStream(remoteStream);
+        await setLocalStream(true, {width: 1920, height: 1080});
     } catch (err) {
         console.error(err);
     }

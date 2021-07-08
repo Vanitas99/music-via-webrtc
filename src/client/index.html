@@ -66,16 +66,18 @@
         </div> 
     </div>
     
-    <div id="mainPage" class="container" style="width:100%; ">
-        <div id="videos" style="align-content: center; height: 75vh;" class="row justify-content-center">
+    <div id="mainPage" class="container-fluid" style="width:100%; ">
+        <div class="row justify-content-center"  style="height: 10vh;">
+            <h1> WEBRTC MUSIC TRANSMISSION </h1>
+        </div>
+        <div id="videoContainer" style="align-content: center; height: 70vh;" class="row justify-content-center">
             <div class="col-6 d-flex justify-content-center videos" style="box-shadow: 0 0 20px rgb(0,0,0);">
                 <video muted autoplay playsinline id="localVideo" style="margin: auto; width: 100%; height: 100%; ;"></video>
-            </div>
-            <div class="col-6 d-flex justify-content-center videos" style="box-shadow: 0 0 20px  rgb(0, 0, 0) ">
-                <video autoplay playsinline id="remoteVideo" style="margin: auto; height: 100%; width: 100%;"></video>
-            </div>
+            </div>    
+        
         </div>
-        <div class="row" style="height: 10qvh">
+        
+        <div class="row" style="height: 20vh">
             <div class="col d-flex justify-content-around" >
                 <div class="btn-group dropup">
                     <button id="micButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/microphone-mute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
