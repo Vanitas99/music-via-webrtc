@@ -9,6 +9,7 @@
 </head>
 
 <body >
+    <!-------------------------MODAL POPUPS WHEN OPENING WEBSITE----------------------->
     <div>
         <div id="generalModal" class="modal align-middle" tabindex="-1" role="dialog">
             <div class="modal-dialog h-100 d-flex flex-column justify-content-center my-0" role="document">
@@ -29,6 +30,27 @@
                             <div class="row justify-content-center my-4">
                                 <button class="btn btn-primary" id="createRoom" style="width: 50%;">Create new Room</button>
                             </div>
+                            <div class="row justify-content-center">
+                                <div class="col d-flex justify-content-center">
+                                    <div class="btn-group dropdown">
+                                        <div class="btn-group dropdown">
+                                            <button id="selectMic" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Microphone</button>
+                                            <ul class="dropdown-menu" id="micSelection">
+                                            </ul>
+                                        </div>
+                                        <div class="btn-group dropdown">
+                                            <button id="selectSpeaker" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Speaker</button>
+                                            <ul class="dropdown-menu" id="speakerSelection">
+                                            </ul>
+                                        </div>
+                                        <div class="btn-group dropdown">
+                                            <button id="selectCam" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Camera</button>
+                                            <ul class="dropdown-menu" id="camSelection">
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>    
                 </div>
@@ -43,9 +65,30 @@
                                 <input type="text" class="form-control user-name-input" placeholder="Your name"/>
                             </div>
                             <div class="row justify-content-center my-4">
-                                <div class="input-group px-0">
+                                <div class="input-group">
                                     <div class="input-group-prepend">
                                         <button class="btn btn-primary joinRoom" id="joinRoom">Join</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row justify-content-center">
+                                <div class="col d-flex justify-content-center">
+                                    <div class="btn-group dropup">
+                                        <div class="btn-group dropup">
+                                            <button id="selectMic" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Microphone</button>
+                                            <ul class="dropdown-menu" id="micSelection">
+                                            </ul>
+                                        </div>
+                                        <div class="btn-group dropup">
+                                            <button id="selectSpeaker" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Speaker</button>
+                                            <ul class="dropdown-menu" id="speakerSelection">
+                                            </ul>
+                                        </div>
+                                        <div class="btn-group dropup">
+                                            <button id="selectCam" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Camera</button>
+                                            <ul class="dropdown-menu" id="camSelection">
+                                            </ul>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -66,9 +109,12 @@
         </div> 
     </div>
     
+    <!-------------------------MAIN PAGE----------------------->
     <div id="mainPage" class="container-fluid" style="width:100%; ">
         <div class="row justify-content-center"  style="height: 10vh;">
-            <h1> WEBRTC MUSIC TRANSMISSION </h1>
+            <div class="col d-flex justify-content-center">
+                <h1 class="m-auto">Musikübertragung mittels WebRTC</h1>
+            </div>
         </div>
         <div id="videoContainer" style="align-content: center; height: 70vh;" class="row justify-content-center">
             <div class="col-6 d-flex justify-content-center videos" style="box-shadow: 0 0 20px rgb(0,0,0);">
@@ -77,33 +123,21 @@
         
         </div>
         
-        <div class="row" style="height: 20vh">
+        <div class="row" style="height: 10vh">
             <div class="col d-flex justify-content-around" >
-                <div class="btn-group dropup">
+                <div class="btn-group">
                     <button id="micButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/microphone-mute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                     <button id="speakerButton"type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/speaker-unmute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                     <button id="screenshareButton" type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/screensharing.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                     <button id="camButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/webcam.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                 </div>
             </div>
+        </div>
+        <div class="row" style="height: 10vh">
             <div class="col d-flex justify-content-center">
-                <div class="btn-group dropup">
-                    <div class="btn-group dropup">
-                        <button id="selectMic" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Microphone</button>
-                        <ul class="dropdown-menu" id="micSelection">
-                        </ul>
-                    </div>
-                    <div class="btn-group dropup">
-                        <button id="selectSpeaker" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Speaker</button>
-                        <ul class="dropdown-menu" id="speakerSelection">
-                        </ul>
-                    </div>
-                    <div class="btn-group dropup">
-                        <button id="selectCam" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Camera</button>
-                        <ul class="dropdown-menu" id="camSelection">
-                        </ul>
-                    </div>
-                </div>
+                <button id="copyLink" type="button" class="btn btn-primary my-auto px-3" style="font-size: 1.5rem;">Copy Invite Link</button>
+                <span  class="my-auto">Meeting ID: </span>
+                <span id="meetingIdSpan" class="my-auto"> </span>
             </div>
         </div>
        

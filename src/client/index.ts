@@ -1,7 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { Toast , Modal} from "bootstrap";
-import { connect } from "http2";
-import { Stream } from "stream";
+import copy from 'copy-text-to-clipboard';
 
 let isDev = process.env.NODE_ENV != "production";
 
@@ -17,7 +16,6 @@ let currentMic: string;
 let currentSpeaker: string;
 let currentCam: string;
 
-let remoteStream = new MediaStream();
 let deviceSelections: HTMLUListElement[] = [];
 
 let entryModal: Modal;
@@ -30,7 +28,6 @@ let remoteConnections: Map<string, {
     connection: RTCPeerConnection,
     stream: MediaStream
 }> = new Map();
-const API_URL = location.origin.replace('http', 'ws');
 
 const MIC_MUTE_URL = "url(\"../Public/microphone-mute.svg\")";
 const MIC_UNMUTE_URL = "url(\"../Public//microphone-unmute.svg\")";
@@ -44,10 +41,7 @@ const DISABLED_COLOR = "rgb(182, 0, 0";
 const iceServers = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
     ],
   }
 
@@ -60,6 +54,7 @@ const populateDeviceList= async () => {
         }
     });
 
+    console.log("Grabbing Media Devices");
     const devices = await navigator.mediaDevices.enumerateDevices();
     devices.forEach( 
         device => {
@@ -89,6 +84,7 @@ const setupUi = (socket: Socket) => {
         const element = e.target;
         localMicState = localMicState == "muted" ? "unmuted" : "muted";
         ((document.querySelector('#localVideo') as HTMLVideoElement).srcObject as MediaStream).getAudioTracks()[0].enabled = localMicState == "unmuted";
+        socket.emit("change-mute-state", localMicState);
 
         element.style.backgroundImage = localMicState == "muted" ? MIC_MUTE_URL : MIC_UNMUTE_URL;
         element.style.backgroundColor = localMicState == "muted" ? DISABLED_COLOR : ENABLED_COLOR;
@@ -132,10 +128,11 @@ const setupUi = (socket: Socket) => {
         });
     });
     deviceSelections.push(
-        document.querySelector("#micSelection")!,
-        document.querySelector("#speakerSelection")!, 
-        document.querySelector("#camSelection")!
+        $("#micSelection").get()[0] as HTMLUListElement,
+        $("#speakerSelection").get()[0] as HTMLUListElement, 
+        $("#camSelection").get()[0] as HTMLUListElement
     );
+    
     populateDeviceList();
 
     let bJoinRoom = $(".joinRoom");
@@ -145,6 +142,7 @@ const setupUi = (socket: Socket) => {
                 console.log(`You joined room ${roomId}`);
                 entryModal.hide();
                 entryModal.dispose();
+                $("#meetingIdSpan").text(roomId);
             });
             const id = roomIdToJoin ? roomIdToJoin : $("#roomId").val();
             const userName = $("#activeEntryModal").find("input").val();
@@ -164,12 +162,26 @@ const setupUi = (socket: Socket) => {
                 console.log(roomId);
                 entryModal.hide();
                 entryModal.dispose();
+                $("#meetingIdSpan").text(roomId);
             });
             const userName = $("#activeEntryModal").find("input").val();
+            if (!userName) {
+                alert("You have to enter a Username!");
+                return;
+            }
             socket.emit("new-room", userName, localMicState);
         } else {
            
         }
+    });
+
+    let bCopyLink = $('#copyLink');
+    bCopyLink.on("click", () => {
+        const id = $("#meetingIdSpan").text();
+        let inviteLink: string = "";
+        inviteLink += isDev ? "https://localhost:5500/room/" : "https://music-via-webrtc.herokuapp.com/room/";
+        inviteLink += id;
+        if (!copy(inviteLink)) alert("Failed to copy Link");
     });
 
     socket.on("err-join-room", (msg: string) => {
@@ -202,8 +214,12 @@ const setupUi = (socket: Socket) => {
     });
     socket.on("participant-left", (id: string) => {
         console.log("Participant left: " + id);
+        remoteConnections.get(id)!.connection.close();
+        remoteConnections.delete(id);
+        $("#remoteVideo-" + id).remove();
     });
     socket.on("user-changed-mute-state", (userId: string, newState: MuteState) => {
+        console.log("Mute State Change");
         remoteConnections.get(userId)!.muteState = newState;
         setMuteInUi(userId);
     });
@@ -211,7 +227,9 @@ const setupUi = (socket: Socket) => {
 };
 
 const setMuteInUi = (id: string) => {
-    $("#remoteMuteIcon-" + id).attr("src", remoteConnections.get(id)!.muteState == "muted" ? MIC_MUTE_URL : MIC_UNMUTE_URL) ; 
+    (remoteConnections.get(id)!.muteState == "muted") 
+        ? $("#remoteMuteIcon-" + id).fadeIn() 
+        : $("#remoteMuteIcon-" + id).fadeOut();  
 };
 
 const setLocalStream = async (audio: boolean, {width, height}: {width: number, height: number}) => {
@@ -229,6 +247,7 @@ const setLocalStream = async (audio: boolean, {width, height}: {width: number, h
 
 const addTrackToStream = (stream: MediaStream, track: MediaStreamTrack) => {
     stream.addTrack(track);
+    console.log(stream.getTracks());
 }
 
 const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: string, userName: string}) : RTCPeerConnection => {
@@ -242,19 +261,23 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
     });
 
     const newVidHtml = 
-    `<div class="col-6 d-flex justify-content-center videos" style="position:relative; box-shadow: 0 0 20px  rgb(0, 0, 0) ">`+
-                    `<video autoplay playsinline id="remoteVideo-${userId}" style="margin: auto; height: 100%; width: 100%;"></video>` + 
-                    `<img id="remoteMuteIcon" src=${MIC_UNMUTE_URL} style="left: 0; bottom: 0;"></img>`+
-                    `<span style="background-color: darkgrey; color: white; position: absolute; bottom: 0; left: 0;">${userName}</span>` +
+    `<div id="remoteVideo-${userId}" class="col-6 d-flex justify-content-center videos" style="position:relative; box-shadow: 0 0 20px  rgb(0, 0, 0) ">`+
+                    `<video autoplay playsinline style="margin: auto; height: 100%; width: 100%;"></video>` + 
+                    `<img id="remoteMuteIcon-${userId}" src="../Public/microphone-mute.svg" style=" width: 5%; height: 5%; "></img>`+
+                    `<span style="font-size: 1.25em; background-color: black; color: white; position: absolute; bottom: 0; left: 0;">${userName}</span>` +
                 `</div>`;
     console.log(newVidHtml);
     $("#videoContainer").append(newVidHtml);
+    ($(`#remoteVideo-${userId}`).find("video")[0] as HTMLMediaElement).srcObject = remoteStream;
 
     localStream.getTracks().forEach(track => {
         conn.addTrack(track);
     });
     conn.ontrack = (trackEvent) => {
+        console.log("Received new Tracks from Remote Peer");
+        console.log(trackEvent.track);
         const remoteStream = remoteConnections.get(userId)!.stream;
+        console.log(remoteStream);
         addTrackToStream(remoteStream, trackEvent.track);
     }
     conn.onnegotiationneeded = e => {
@@ -347,6 +370,7 @@ const  setupWebsocketConnection = () => {
 
 document.addEventListener("DOMContentLoaded", async () => {
     const roomId = new URLSearchParams(window.location.search).get("roomId");
+
     if (roomId) {
         console.log("We have joined Room via URL");
         roomIdToJoin = roomId;
