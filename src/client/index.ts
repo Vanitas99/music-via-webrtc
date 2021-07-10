@@ -79,11 +79,17 @@ const populateDeviceList= async () => {
 
 const setupUi = (socket: Socket) => {
 
+    $("#toggleSidebar").on("click", (e) => {
+        console.log("Toggle Sidebar");
+        $("#sidebar").toggleClass("active");
+    });
     let bMic = $("#micButton");
     bMic?.on('click', (e) => {
         const element = e.target;
         localMicState = localMicState == "muted" ? "unmuted" : "muted";
-        ((document.querySelector('#localVideo') as HTMLVideoElement).srcObject as MediaStream).getAudioTracks()[0].enabled = localMicState == "unmuted";
+        //((document.querySelector('#localVideo') as HTMLVideoElement).srcObject as MediaStream).getAudioTracks()[0].enabled = localMicState == "unmuted";
+        localStream.getAudioTracks()[0].enabled = localMicState == "unmuted";
+        console.log(localStream);
         socket.emit("change-mute-state", localMicState);
 
         element.style.backgroundImage = localMicState == "muted" ? MIC_MUTE_URL : MIC_UNMUTE_URL;
@@ -136,10 +142,15 @@ const setupUi = (socket: Socket) => {
     populateDeviceList();
 
     let bJoinRoom = $(".joinRoom");
-    bJoinRoom.on("click", (e) => {
+    bJoinRoom.on("click", (_) => {
         if (socket.connected) {
-            socket.on("you-joined-room", (roomId: string) => {
+            socket.on("you-joined-room", async (roomId: string) => {
                 console.log(`You joined room ${roomId}`);
+                try {
+                    await setLocalStream(true, {width: 1920, height: 1080});
+                } catch (err) {
+                    console.error(err);
+                }
                 entryModal.hide();
                 entryModal.dispose();
                 $("#meetingIdSpan").text(roomId);
@@ -156,10 +167,15 @@ const setupUi = (socket: Socket) => {
     });
 
     let bCreateRoom = $("#createRoom");
-    bCreateRoom.on("click", () => {
+    bCreateRoom.on("click", (_) => {
         if (socket.connected) {
-            socket.on("new-room-created", (roomId: string) => {
+            socket.on("new-room-created", async (roomId: string) => {
                 console.log(roomId);
+                try {
+                    await setLocalStream(true, {width: 1920, height: 1080});
+                } catch (err) {
+                    console.error(err);
+                }
                 entryModal.hide();
                 entryModal.dispose();
                 $("#meetingIdSpan").text(roomId);
@@ -176,7 +192,7 @@ const setupUi = (socket: Socket) => {
     });
 
     let bCopyLink = $('#copyLink');
-    bCopyLink.on("click", () => {
+    bCopyLink.on("click", (_) => {
         const id = $("#meetingIdSpan").text();
         let inviteLink: string = "";
         inviteLink += isDev ? "https://localhost:5500/room/" : "https://music-via-webrtc.herokuapp.com/room/";
@@ -191,13 +207,15 @@ const setupUi = (socket: Socket) => {
     socket.on("webrtc-offer", async (userId: string, userName: string, sdp: string) => {
         console.log("Received Offer from Room Owner!");
         let remoteSdp : RTCSessionDescriptionInit = JSON.parse(sdp);
-        let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
         try {
+            await setLocalStream(true, {width: 1920, height: 1080});
+            let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
             await conn.setRemoteDescription(remoteSdp);
             await sendAnwser(conn, socket);
         } catch (err) {
             console.error(err);
         }
+        
     });
 
     socket.on("webrtc-answer", async (userId: string, sdp: string) => {
@@ -236,10 +254,12 @@ const setLocalStream = async (audio: boolean, {width, height}: {width: number, h
     try {
         const audioEnabled = localMicState == "unmuted";
         const videoEnabled = localCamSate == "sharing";
-        localStream = await navigator.mediaDevices.getUserMedia({video: {width: width, height: height}, audio: audio});
+        localStream = await navigator.mediaDevices.getUserMedia({audio: audio, video: {width: width, height: height}});
+        console.log(localStream.getTracks());
         localStream.getAudioTracks()[0].enabled = audioEnabled;
         localStream.getVideoTracks()[0].enabled = videoEnabled;
         (document.querySelector('#localVideo') as HTMLVideoElement).srcObject = localStream;
+        console.log(localStream);
     } catch(err ) {
         console.log(err);
     };
@@ -264,15 +284,17 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
     `<div id="remoteVideo-${userId}" class="col-6 d-flex justify-content-center videos" style="position:relative; box-shadow: 0 0 20px  rgb(0, 0, 0) ">`+
                     `<video autoplay playsinline style="margin: auto; height: 100%; width: 100%;"></video>` + 
                     `<img id="remoteMuteIcon-${userId}" src="../Public/microphone-mute.svg" style=" width: 5%; height: 5%; "></img>`+
-                    `<span style="font-size: 1.25em; background-color: black; color: white; position: absolute; bottom: 0; left: 0;">${userName}</span>` +
+                    `<span style="font-size: 1.25em; background-color: black; color: white; position: absolute; bottom: 0; left: 0; padding: 0.2em">${userName}</span>` +
                 `</div>`;
     console.log(newVidHtml);
     $("#videoContainer").append(newVidHtml);
     ($(`#remoteVideo-${userId}`).find("video")[0] as HTMLMediaElement).srcObject = remoteStream;
 
+    console.log(localStream);
     localStream.getTracks().forEach(track => {
         conn.addTrack(track);
     });
+    
     conn.ontrack = (trackEvent) => {
         console.log("Received new Tracks from Remote Peer");
         console.log(trackEvent.track);
@@ -381,12 +403,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const socket = setupWebsocketConnection();
     setupUi(socket);
-
-    try {
-        await setLocalStream(true, {width: 1920, height: 1080});
-    } catch (err) {
-        console.error(err);
-    }
 
     console.log("Finished Loading");
 });

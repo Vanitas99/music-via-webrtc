@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Music via WebRTC</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link type="text/css" rel="stylesheet" href="sidebar.css">
 </head>
 
 <body >
@@ -109,39 +110,78 @@
         </div> 
     </div>
     
-    <!-------------------------MAIN PAGE----------------------->
-    <div id="mainPage" class="container-fluid" style="width:100%; ">
-        <div class="row justify-content-center"  style="height: 10vh;">
-            <div class="col d-flex justify-content-center">
-                <h1 class="m-auto">Musikübertragung mittels WebRTC</h1>
+
+    <div class="wrapper" style="width:100%; align-items: stretch; display: flex;">
+        
+        <!-------------------------SIDE BAR----------------------->
+        <div id="sidebar" class="active d-flex flex-column" style="min-width: 20vw; max-width: 20vw; min-height: 100vh;">
+            <div class="d-flex flex-column justify-content-center">
+                <span>Externe Audio Datei senden</span>
+                <button id="insertExternalAudio" class="btn btn-secondary mx-auto">Play</button>
+                <hr>
             </div>
-        </div>
-        <div id="videoContainer" style="align-content: center; height: 70vh;" class="row justify-content-center">
-            <div class="col-6 d-flex justify-content-center videos" style="box-shadow: 0 0 20px rgb(0,0,0);">
-                <video muted autoplay playsinline id="localVideo" style="margin: auto; width: 100%; height: 100%; ;"></video>
-            </div>    
-        
-        </div>
-        
-        <div class="row" style="height: 10vh">
-            <div class="col d-flex justify-content-around" >
-                <div class="btn-group">
-                    <button id="micButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/microphone-mute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
-                    <button id="speakerButton"type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/speaker-unmute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
-                    <button id="screenshareButton" type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/screensharing.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
-                    <button id="camButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/webcam.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
+            <div class="d-flex flex-column justify-content-center">
+                <span>Test Feature 1</span>
+                <button class="btn btn-secondary mx-auto">Toggle</button>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <span>Test Feature 1</span>
+                <button class="btn btn-secondary mx-auto">Toggle</button>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <span>Test Feature 1</span>
+                <button class="btn btn-secondary mx-auto">Toggle</button>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <span>Test Feature 1</span>
+                <button class="btn btn-secondary mx-auto">Toggle</button>
+                <hr>
+            </div>
+
+        </div>    
+        <!-------------------------MAIN PAGE----------------------->
+        <div id="mainPage" class="container-fluid">      
+            <div class="row justify-content-center"  style="height: 10vh;">
+                <div class="col d-flex justify-content-center">
+                    <h1 class="m-auto">Musikübertragung mittels WebRTC</h1>
+                </div>
+            </div>
+            <div id="videoContainer" style="align-content: center; height: 70vh;" class="row justify-content-center mx-4">
+                <div class="col-6 d-flex justify-content-center videos" style="box-shadow: 0 0 20px rgb(0,0,0);">
+                    <video muted autoplay playsinline id="localVideo" style="margin: auto; width: 100%; height: 100%; ;"></video>
+                </div>    
+            
+            </div>
+            
+            <div class="row" style="height: 10vh">
+                <div class="col d-flex justify-content-center" >
+                    <div class="btn-group me-1">
+                        <button id="micButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/microphone-mute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
+                        <button id="speakerButton"type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/speaker-unmute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
+                        <button id="screenshareButton" type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/screensharing.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
+                        <button id="camButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/webcam.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
+                    </div>
+                    <div class="btn-group ms-1">
+                        <button id="toggleSidebar" type="button" class="btn btn-warning my-auto" style="height: 50px;" >Toggle expermintal View</button>
+                    </div>
+                </div>
+            </div>
+            <div class="row" style="height: 10vh">
+                <div class="col d-flex justify-content-center">
+                    <button id="copyLink" type="button" class="btn btn-primary my-auto px-3" style="font-size: 1.5rem;">Copy Invite Link</button>
+                    <span  class="my-auto">Meeting ID: </span>
+                    <span id="meetingIdSpan" class="my-auto"> </span>
                 </div>
             </div>
         </div>
-        <div class="row" style="height: 10vh">
-            <div class="col d-flex justify-content-center">
-                <button id="copyLink" type="button" class="btn btn-primary my-auto px-3" style="font-size: 1.5rem;">Copy Invite Link</button>
-                <span  class="my-auto">Meeting ID: </span>
-                <span id="meetingIdSpan" class="my-auto"> </span>
-            </div>
-        </div>
-       
-    </div>
+
+        
+
+    </div>    
+    
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"
     integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM"

@@ -32,6 +32,7 @@ const httpServer = http.createServer(app);
 app.use(cors());
 app.use("/Public", express.static(path.join(path.resolve() ,'/Public')));
 app.use("/index.js", express.static(path.join(path.resolve(), "dist/index.js")));
+app.use("/sidebar.css", express.static(path.join(path.resolve(), "dist/sidebar.css")))
 
 const io = new Server(httpServer);
 
