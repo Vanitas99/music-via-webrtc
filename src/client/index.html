@@ -32,22 +32,33 @@
                                 <button class="btn btn-primary" id="createRoom" style="width: 50%;">Create new Room</button>
                             </div>
                             <div class="row justify-content-center">
-                                <div class="col d-flex justify-content-center">
-                                    <div class="btn-group dropdown">
-                                        <div class="btn-group dropdown">
-                                            <button id="selectMic" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Microphone</button>
-                                            <ul class="dropdown-menu" id="micSelection">
-                                            </ul>
+                                <div class="col d-flex flex-column justify-content-center">
+                                    <div class="dropdown">
+                                        <a id="selectMic" role="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Microphone</a>
+                                        <div class="dropdown-menu" id="micSelection">
                                         </div>
-                                        <div class="btn-group dropdown">
-                                            <button id="selectSpeaker" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Speaker</button>
-                                            <ul class="dropdown-menu" id="speakerSelection">
-                                            </ul>
+                                    </div>
+                                    <div class="dropdown">
+                                        <button id="selectSpeaker"  class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Speaker</button>
+                                        <div class="dropdown-menu" id="speakerSelection">
                                         </div>
-                                        <div class="btn-group dropdown">
-                                            <button id="selectCam" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Camera</button>
-                                            <ul class="dropdown-menu" id="camSelection">
-                                            </ul>
+                                    </div>
+                                    <div class="dropdown">
+                                        <a class="btn btn-primary dropdown-toggle" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                            Dropdown link
+                                        </a>
+                                        <div class="dropdown-menu" id="camSelection">
+                                        </div>
+                                    </div>
+                                    <div class="dropdown">
+                                        <button class="btn btn-secondary dropdown-toggle" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                            Dropdown link
+                                        </button>
+                                        
+                                        <div class="dropdown-menu" aria-labelledby="dropdownMenuLink">
+                                            <a class="dropdown-item">Action</a>
+                                            <a class="dropdown-item">Another action</a>
+                                            <a class="dropdown-item">Something else here</a>
                                         </div>
                                     </div>
                                 </div>
@@ -114,15 +125,30 @@
     <div class="wrapper" style="width:100%; align-items: stretch; display: flex;">
         
         <!-------------------------SIDE BAR----------------------->
-        <div id="sidebar" class="active d-flex flex-column" style="min-width: 20vw; max-width: 20vw; min-height: 100vh;">
+        <div id="sidebar" class="active d-flex flex-column" style="overflow-y: auto; min-width: 20vw; max-width: 20vw; min-height: 100vh;">
             <div class="d-flex flex-column justify-content-center">
-                <span>Externe Audio Datei senden</span>
-                <button id="insertExternalAudio" class="btn btn-secondary mx-auto">Play</button>
+                <strong class="mx-auto">Codec Stats</strong>
+                <div id="codecStatsText">
+                </div>
                 <hr>
             </div>
             <div class="d-flex flex-column justify-content-center">
-                <span>Test Feature 1</span>
-                <button class="btn btn-secondary mx-auto">Toggle</button>
+                <strong class="mx-auto">Externe Audio Datei senden</strong>
+                <div class="d-flex justify-content-center">
+                    <button id="playAudioTrack" class="btn btn-secondary mx-auto">Play</button>
+                    <button id="stopAudioTrack" class="btn btn-secondary mx-auto">Stop</button>
+                    <button id="openAudioTrack" class="btn btn-secondary mx-auto">Open</button>
+                    <input id="file-input" type="file" name="name" style="display: none;" />
+                </div>
+                <hr>
+            </div>
+            <div class="d-flex flex-column justify-content-center">
+                <strong>Recording Remote Peer</strong>
+                <select id="recordingSelection" class="form-select">
+                </select>
+                <button id="startRecording" class="btn btn-secondary mx-auto">Start</button>
+                <button id="stopRecording" class="btn btn-secondary mx-auto">Stop</button>
+                <a id="downloadRecording" href="" download="">Download</a>
                 <hr>
             </div> 
             <div class="d-flex flex-column justify-content-center">

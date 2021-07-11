@@ -1,5 +1,6 @@
 const path = require('path');
 const HtmlPlugin = require('html-webpack-plugin');
+const CopyPlugin = require('copy-webpack-plugin');
 
 const production = process.env.NODE_ENV == "production";
 console.log(production);
@@ -27,6 +28,13 @@ module.exports = [{
         new HtmlPlugin({
             template: './src/client/index.html',
             inject: true
+        }),
+
+        new CopyPlugin({
+            patterns: [
+                {from: "./src/client/css", to: "."},
+                {from: "./Public/Sounds", to: "."}               
+            ]  
         })
     ]},
 ];

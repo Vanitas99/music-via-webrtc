@@ -1,11 +1,11 @@
 import { io, Socket } from "socket.io-client";
 import { Toast , Modal} from "bootstrap";
+import { WavRecorder } from "./Recorder";
+import { MuteState, SharingState, RemoteConnectionInfo } from "./types";
+import * as c from "./constants";
+
 import copy from 'copy-text-to-clipboard';
 
-let isDev = process.env.NODE_ENV != "production";
-
-type MuteState = "muted" | "unmuted";
-type SharingState = "sharing" | "not-sharing";
 
 let localMicState: MuteState = "muted";
 let localSpeakerState: MuteState = "unmuted";
@@ -22,20 +22,7 @@ let entryModal: Modal;
 let roomIdToJoin: string;
 
 let localStream: MediaStream;
-let remoteConnections: Map<string, {
-    userName: string,
-    muteState: MuteState,
-    connection: RTCPeerConnection,
-    stream: MediaStream
-}> = new Map();
-
-const MIC_MUTE_URL = "url(\"../Public/microphone-mute.svg\")";
-const MIC_UNMUTE_URL = "url(\"../Public//microphone-unmute.svg\")";
-const SPEAKER_MUTE_URL = "url(\"../Public/speaker-mute.svg\")";
-const SPEAKER_UNMUTE_URL = "url(\"../Public/speaker-unmute.svg\")";
-
-const ENABLED_COLOR = "rgb(152, 226, 41)";
-const DISABLED_COLOR = "rgb(182, 0, 0";
+let remoteConnections: Map<string, RemoteConnectionInfo> = new Map();
 
 // Free public STUN servers provided by Google.
 const iceServers = {
@@ -55,27 +42,28 @@ const populateDeviceList= async () => {
     });
 
     console.log("Grabbing Media Devices");
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    devices.forEach( 
-        device => {
-            console.log(device.label, device.kind, device.groupId)
-            let newEntry = document.createElement("li");
-            let a = document.createElement("a");
-            a.className = "dropdown-item ";
-            a.id = device.deviceId;
-            a.href = "#";
-            a.innerText = device.label;
-            newEntry.appendChild(a);
-            if (device.kind == "audioinput") {
-                micSelection.appendChild(newEntry);
-            } else if (device.kind == "audiooutput") {
-                speakerSelection.appendChild(newEntry);
-            } else {
-                camSelection.appendChild(newEntry);
-            }
-    });  
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        devices.forEach(
+            device => {
+                console.log(device.label, device.kind, device.groupId)
+                let a = document.createElement("a");
+                a.className = "dropdown-item";
+                a.id = device.deviceId;
+                a.href = "#";
+                a.innerText = device.label;
+                if (device.kind == "audioinput") {
+                    micSelection.appendChild(a);
+                } else if (device.kind == "audiooutput") {
+                    speakerSelection.appendChild(a);
+                } else {
+                    camSelection.appendChild(a);
+                }
+        });  
+    } catch (err) {
+        console.error(err);
+    }
 };
-
 
 const setupUi = (socket: Socket) => {
 
@@ -92,19 +80,19 @@ const setupUi = (socket: Socket) => {
         console.log(localStream);
         socket.emit("change-mute-state", localMicState);
 
-        element.style.backgroundImage = localMicState == "muted" ? MIC_MUTE_URL : MIC_UNMUTE_URL;
-        element.style.backgroundColor = localMicState == "muted" ? DISABLED_COLOR : ENABLED_COLOR;
+        element.style.backgroundImage = localMicState == "muted" ? c.MIC_MUTE_URL : c.MIC_UNMUTE_URL;
+        element.style.backgroundColor = localMicState == "muted" ? c.DISABLED_COLOR : c.ENABLED_COLOR;
     });
-    bMic.css("backgroundColor", MIC_MUTE_URL);
-    bMic.css("backgroundColor", DISABLED_COLOR);
+    bMic.css("backgroundColor", c.MIC_MUTE_URL);
+    bMic.css("backgroundColor", c.DISABLED_COLOR);
 
     let bSpeaker = $("#speakerButton");
     bSpeaker?.on('click', (e) => {
         const element = (e.target as HTMLButtonElement);
         
         localSpeakerState = localSpeakerState == "muted" ? "unmuted" : "muted";
-        element.style.backgroundImage = localSpeakerState == "muted" ? SPEAKER_MUTE_URL : SPEAKER_UNMUTE_URL;
-        element.style.backgroundColor = localSpeakerState == "muted" ? DISABLED_COLOR : ENABLED_COLOR;
+        element.style.backgroundImage = localSpeakerState == "muted" ? c.SPEAKER_MUTE_URL : c.SPEAKER_UNMUTE_URL;
+        element.style.backgroundColor = localSpeakerState == "muted" ? c.DISABLED_COLOR : c.ENABLED_COLOR;
 
         remoteConnections.forEach(conn => {
             conn.stream.getAudioTracks().forEach(track => {
@@ -112,15 +100,15 @@ const setupUi = (socket: Socket) => {
             })
         })
     });
-    bSpeaker.css("backgroundImage", SPEAKER_UNMUTE_URL);
-    bSpeaker.css("backgroundColor", ENABLED_COLOR);
+    bSpeaker.css("backgroundImage", c.SPEAKER_UNMUTE_URL);
+    bSpeaker.css("backgroundColor", c.ENABLED_COLOR);
 
 
     let bScreenSharing = $("#screenshareButton");
     bScreenSharing?.on('click', (e) => {
         const element = (e.target as HTMLButtonElement);
         localSSState = localSSState == "not-sharing" ? "sharing" : "not-sharing";
-        element.style.backgroundColor = localSSState == "sharing" ? ENABLED_COLOR : "";
+        element.style.backgroundColor = localSSState == "sharing" ? c.ENABLED_COLOR : "";
     });
 
 
@@ -128,18 +116,22 @@ const setupUi = (socket: Socket) => {
     bCam?.on('click', (e) => {
         const element = (e.target as HTMLButtonElement);
         localCamSate = localCamSate == "sharing" ? "not-sharing" : "sharing";
-        element.style.backgroundColor = localCamSate == "sharing" ? ENABLED_COLOR : "";
+        element.style.backgroundColor = localCamSate == "sharing" ? c.ENABLED_COLOR : "";
         localStream.getVideoTracks().forEach(track => {
             track.enabled = localCamSate == "sharing";
         });
     });
     deviceSelections.push(
-        $("#micSelection").get()[0] as HTMLUListElement,
-        $("#speakerSelection").get()[0] as HTMLUListElement, 
-        $("#camSelection").get()[0] as HTMLUListElement
+        $("#activeEntryModal").find("#micSelection").get()[0] as HTMLUListElement,
+        $("#activeEntryModal").find("#speakerSelection").get()[0] as HTMLUListElement, 
+        $("#activeEntryModal").find("#camSelection").get()[0] as HTMLUListElement
     );
     
     populateDeviceList();
+
+    $("#selectMic").on("click", () => {
+        $(".dropdown-toggle").dropdown();
+    });
 
     let bJoinRoom = $(".joinRoom");
     bJoinRoom.on("click", (_) => {
@@ -195,7 +187,7 @@ const setupUi = (socket: Socket) => {
     bCopyLink.on("click", (_) => {
         const id = $("#meetingIdSpan").text();
         let inviteLink: string = "";
-        inviteLink += isDev ? "https://localhost:5500/room/" : "https://music-via-webrtc.herokuapp.com/room/";
+        inviteLink += c.isDev ? "http://localhost:5500/room/" : "https://music-via-webrtc.herokuapp.com/room/";
         inviteLink += id;
         if (!copy(inviteLink)) alert("Failed to copy Link");
     });
@@ -215,7 +207,6 @@ const setupUi = (socket: Socket) => {
         } catch (err) {
             console.error(err);
         }
-        
     });
 
     socket.on("webrtc-answer", async (userId: string, sdp: string) => {
@@ -254,7 +245,7 @@ const setLocalStream = async (audio: boolean, {width, height}: {width: number, h
     try {
         const audioEnabled = localMicState == "unmuted";
         const videoEnabled = localCamSate == "sharing";
-        localStream = await navigator.mediaDevices.getUserMedia({audio: audio, video: {width: width, height: height}});
+        localStream = await navigator.mediaDevices.getUserMedia({audio: {autoGainControl: false, noiseSuppression: false}, video: {width: width, height: height}});
         console.log(localStream.getTracks());
         localStream.getAudioTracks()[0].enabled = audioEnabled;
         localStream.getVideoTracks()[0].enabled = videoEnabled;
@@ -277,24 +268,28 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
         connection: conn,
         muteState: "muted",
         stream: remoteStream,
-        userName: userName
+        userName: userName,
+        recorder: null
     });
+
+    setInterval(() => getStats(conn,"audio","inbound-rtp"), 1000);
 
     const newVidHtml = 
     `<div id="remoteVideo-${userId}" class="col-6 d-flex justify-content-center videos" style="position:relative; box-shadow: 0 0 20px  rgb(0, 0, 0) ">`+
                     `<video autoplay playsinline style="margin: auto; height: 100%; width: 100%;"></video>` + 
                     `<img id="remoteMuteIcon-${userId}" src="../Public/microphone-mute.svg" style=" width: 5%; height: 5%; "></img>`+
-                    `<span style="font-size: 1.25em; background-color: black; color: white; position: absolute; bottom: 0; left: 0; padding: 0.2em">${userName}</span>` +
+                    `<span style="font-size: 1.25em; background-color: #0d6efd; color: white; position: absolute; bottom: 0; left: 0; padding: 0.2em">${userName}</span>` +
                 `</div>`;
-    console.log(newVidHtml);
     $("#videoContainer").append(newVidHtml);
     ($(`#remoteVideo-${userId}`).find("video")[0] as HTMLMediaElement).srcObject = remoteStream;
 
-    console.log(localStream);
+    const newRecordingEntry = `<option value=${userId}>${userName}</option>`;
+    $("#recordingSelection").append(newRecordingEntry);
+    
     localStream.getTracks().forEach(track => {
         conn.addTrack(track);
     });
-    
+
     conn.ontrack = (trackEvent) => {
         console.log("Received new Tracks from Remote Peer");
         console.log(trackEvent.track);
@@ -390,7 +385,70 @@ const  setupWebsocketConnection = () => {
     return socket;
 };
 
+
+const setupExperimentalFeatures = (socket: Socket) => {
+    $("#playAudioTrack").on("click", (_) => {
+
+    });
+    $("#stopAudioTrack").on("click", (_) => {
+
+    });
+    $("#openAudioTrack").on("click", (_) => {
+        $("#file-input").trigger("click");
+    });
+
+    $("#recordingSelection").append()
+
+
+    $("#startRecording").on("click", (_) => {
+        const selectedPeer = $("#recordingSelection").val() as string;
+        console.log(selectedPeer);
+        if (selectedPeer && remoteConnections.get(selectedPeer)?.recorder == null) {
+            let peerStream = remoteConnections.get(selectedPeer)?.stream;
+            let peerRecorder = new WavRecorder(peerStream!);
+            remoteConnections.get(selectedPeer)!.recorder = peerRecorder;
+        }
+        const recorder =  remoteConnections.get(selectedPeer)?.recorder;
+        if (recorder) {
+            recorder.start();
+            console.log(`Started local recording of User ${selectedPeer}`);
+        }
+    });
+
+    $("#stopRecording").on("click", (_) => {
+        const selectedPeer = $("#recordingSelection").val() as string;
+        console.log(selectedPeer);
+        let peerRecorder = remoteConnections.get(selectedPeer)?.recorder;
+        if (peerRecorder) {
+            peerRecorder.stop();
+            console.log(`Stopped local recording of User ${selectedPeer}`);
+        }
+    });
+
+};
+
+const getStats = async (conn: RTCPeerConnection, kind: "audio" | "video" ,type: RTCStatsType) => {
+    let statsOutput = "";
+    try {
+        const stats = await conn.getStats(null);
+  
+        stats?.forEach(report => {
+            if (report.type === type && report.kind === kind) {
+                Object.keys(report).forEach(statName => {
+                statsOutput += `<strong>${statName}:</strong> ${report[statName]}<br>\n`;
+                });
+          }
+        });
+    } catch(err) {
+        console.log(err);
+    } 
+    $("#codecStatsText").html(statsOutput);
+  };
+
 document.addEventListener("DOMContentLoaded", async () => {
+    
+    console.log("Production: " + !c.isDev);
+
     const roomId = new URLSearchParams(window.location.search).get("roomId");
 
     if (roomId) {
@@ -403,6 +461,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const socket = setupWebsocketConnection();
     setupUi(socket);
+    setupExperimentalFeatures(socket);
 
     console.log("Finished Loading");
 });
