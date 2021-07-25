@@ -92,11 +92,19 @@ const setupUser = (socket: Socket) => {
     // Wenn ein Nutzer einen Webrtc Offer schickt, dann ist dieser Ersteller des Raumes,
     // bzw. der jenige der den Anruf startet. Dementsprechend wird dieser Offer an alle Sockets im 
     // Websocket Room gebroadcastet.
-    socket.on("webrtc-offer", (sdp: string, userName: string) => {
+    socket.on("initial-webrtc-offer", (sdp: string, userName: string) => {
         console.log(`Received Call Offer from ${socket.id}`);
         if (userRoomMap.has(socket.id)) {
             const roomId = 'room-' + userRoomMap.get(socket.id);
-            socket.to(roomId).emit("webrtc-offer", socket.id, userName, sdp);
+            socket.to(roomId).emit("initial-webrtc-offer", socket.id, userName, sdp);
+        }
+    });
+
+    socket.on('webrtc-offer', (sdp: string) => {
+        console.log(`Received negotiation offer from ${socket.id}`);
+        if (userRoomMap.has(socket.id)) {
+            const roomId = 'room-' + userRoomMap.get(socket.id);
+            socket.to(roomId).emit("webrtc-offer", socket.id, sdp);
         }
     });
 

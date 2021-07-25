@@ -1,11 +1,12 @@
 import { io, Socket } from "socket.io-client";
 import { Toast , Modal} from "bootstrap";
 import { WavRecorder } from "./Recorder";
-import { MuteState, SharingState, RemoteConnectionInfo } from "./types";
+import { MuteState, SharingState, RemoteConnectionInfo , OpusCodecParameters} from "./types";
 import * as c from "./constants";
 
-import copy from 'copy-text-to-clipboard';
+import * as sdpUtils from "sdp-transform";
 
+import copy from 'copy-text-to-clipboard';
 
 let localMicState: MuteState = "muted";
 let localSpeakerState: MuteState = "unmuted";
@@ -24,7 +25,23 @@ let roomIdToJoin: string;
 let localStream: MediaStream;
 let remoteConnections: Map<string, RemoteConnectionInfo> = new Map();
 
-// Free public STUN servers provided by Google.
+let filePlayback : {
+    buffer: AudioBuffer | null,
+    dest: MediaStreamAudioDestinationNode | null,
+    currentSource: AudioBufferSourceNode | null,
+    ctx: AudioContext;
+} = {buffer: null, dest: null, currentSource: null, ctx: new window.AudioContext()};
+
+
+// Diese Variable wird genutzt, um bei einer neuen Verhandlung der Verbindung (engl. Negotiation),
+// z.b durch Änderung von Paramtern oder Hinzufügen neuer MediaStreamTracks (audio, video),
+// eventuelle Data Races zu verhindern. Falls beide Peers gleichzeitig versuchen die Verbindung neu 
+// auszuhandlen (onnegotiationneeded), d.h. beide einen webrtc-offer senden, dann wird der "nette" Peer
+// seinen Verhandlungsversuch abbrechen und erst versuchen neu zu verhandeln, wenn die Verbindung in einem
+// stabilen Zustand ist. (RTCPeerConnection.signalingState == "stable")!
+let amIPolite: boolean;
+
+// Kostenlose Stun Server von Google. Nicht mehr als 2 nutzen.
 const iceServers = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -75,9 +92,7 @@ const setupUi = (socket: Socket) => {
     bMic?.on('click', (e) => {
         const element = e.target;
         localMicState = localMicState == "muted" ? "unmuted" : "muted";
-        //((document.querySelector('#localVideo') as HTMLVideoElement).srcObject as MediaStream).getAudioTracks()[0].enabled = localMicState == "unmuted";
         localStream.getAudioTracks()[0].enabled = localMicState == "unmuted";
-        console.log(localStream);
         socket.emit("change-mute-state", localMicState);
 
         element.style.backgroundImage = localMicState == "muted" ? c.MIC_MUTE_URL : c.MIC_UNMUTE_URL;
@@ -95,8 +110,13 @@ const setupUi = (socket: Socket) => {
         element.style.backgroundColor = localSpeakerState == "muted" ? c.DISABLED_COLOR : c.ENABLED_COLOR;
 
         remoteConnections.forEach(conn => {
-            conn.stream.getAudioTracks().forEach(track => {
+            conn.mainStream.getAudioTracks().forEach(track => {
                 track.enabled = localSpeakerState == "unmuted";
+            })
+            conn.additionalStreams.forEach(stream => {
+                stream.stream.getTracks().forEach(track => {
+                    track.enabled = localSpeakerState == "unmuted";
+                })
             })
         })
     });
@@ -196,29 +216,71 @@ const setupUi = (socket: Socket) => {
         alert(msg);
     })
 
-    socket.on("webrtc-offer", async (userId: string, userName: string, sdp: string) => {
-        console.log("Received Offer from Room Owner!");
+    socket.on("initial-webrtc-offer", async (userId: string, userName: string, sdp: string) => {
+        console.log("Received Inital Offer");
         let remoteSdp : RTCSessionDescriptionInit = JSON.parse(sdp);
+        console.log(remoteSdp.sdp);
+        amIPolite = true;
         try {
             await setLocalStream(true, {width: 1920, height: 1080});
             let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
             await conn.setRemoteDescription(remoteSdp);
             await sendAnwser(conn, socket);
+            remoteConnections.get(userId)!.callStarted = true;
         } catch (err) {
             console.error(err);
         }
     });
 
+    socket.on("webrtc-offer", async (userId: string, sdp: string) => {
+        console.log("Received Negotiation Offer");
+        const remoteSdp : RTCSessionDescriptionInit = JSON.parse(sdp);
+        const conn = remoteConnections.get(userId)?.connection;
+        if (!conn) return;
+
+        if (conn.signalingState != "stable") {
+            if (!amIPolite) return;
+            try {
+                await Promise.all([
+                    conn.setLocalDescription({type: "rollback"}),
+                    conn.setRemoteDescription(remoteSdp)
+                ]);
+            } catch (err) {
+                console.error(err);
+            } 
+        } else {
+            try {
+                await conn.setRemoteDescription(remoteSdp);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        try {
+            await sendAnwser(conn!, socket);
+        } catch (err) {
+            console.error(err);
+        }
+        
+    });
+
     socket.on("webrtc-answer", async (userId: string, sdp: string) => {
         let remoteSdp: RTCSessionDescriptionInit = JSON.parse(sdp);
-        console.log("Received Answer from Participant: " + sdp);
+        console.log("Received Answer from Participant: " + remoteSdp.sdp);
         await remoteConnections.get(userId)!.connection.setRemoteDescription(remoteSdp);
     });
 
     socket.on("new-participant", async (userId: string, userName:string, state: MuteState) => {
             console.log(`User ${userName} (${userId}) joined the room`);
             let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
-            await sendOffer(conn, socket);
+            await sendOffer(userId, {
+                cbr: 1,
+                usedtx: 0,
+                stereo: 0,
+                useinbandfec: 0,
+                maxaveragebitrate: 32000
+            }, true);
+            remoteConnections.get(userId)!.callStarted = true;
             
     });
     socket.on("participant-left", (id: string) => {
@@ -245,92 +307,170 @@ const setLocalStream = async (audio: boolean, {width, height}: {width: number, h
     try {
         const audioEnabled = localMicState == "unmuted";
         const videoEnabled = localCamSate == "sharing";
-        localStream = await navigator.mediaDevices.getUserMedia({audio: {autoGainControl: false, noiseSuppression: false}, video: {width: width, height: height}});
-        console.log(localStream.getTracks());
+        localStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression: true, autoGainControl: true}, video: {width: width, height: height}});
         localStream.getAudioTracks()[0].enabled = audioEnabled;
         localStream.getVideoTracks()[0].enabled = videoEnabled;
+        localStream.onaddtrack = (e) => {
+            console.log(e.track);
+        };
         (document.querySelector('#localVideo') as HTMLVideoElement).srcObject = localStream;
-        console.log(localStream);
     } catch(err ) {
         console.log(err);
     };
 };
 
+const updateLocalAudioTrack = async (userId: string, constraints: MediaTrackConstraints) => {
+    try {
+        const track = localStream.getAudioTracks()[0];
+        track.stop();
+        const newConstraints = Object.assign(track.getSettings(), constraints);
+        const newStream = await navigator.mediaDevices.getUserMedia({audio: newConstraints});
+        
+        remoteConnections.forEach(conn => {
+            conn.connection.getSenders()
+            .find(sender => sender.track!.getCapabilities().deviceId == track.getCapabilities().deviceId)?.replaceTrack(newStream.getAudioTracks()[0]);
+        });
+        localStream.removeTrack(track);
+        localStream.addTrack(newStream.getAudioTracks()[0]);
+    } catch (err) {
+        console.error(err);
+    }
+};
+
+const updateLocalVideoTrack = async (userId: string, constraints: MediaTrackConstraints) => {
+    try {   
+
+    } catch (err) {
+        console.error(err);
+    }
+};
+
 const addTrackToStream = (stream: MediaStream, track: MediaStreamTrack) => {
     stream.addTrack(track);
-    console.log(stream.getTracks());
-}
+};
+
+const addAdditionalStream = (userId: string, track: MediaStreamTrack) => {
+    let stream = new MediaStream();
+    stream.addTrack(track);
+    remoteConnections.get(userId)!.additionalStreams.push({stream: stream});
+
+    let audioElement = new Audio();
+    audioElement.id = "additional" + userId;
+    audioElement.srcObject = stream;
+    audioElement.play();
+
+    $("#audioContainer").append(audioElement);
+};
 
 const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: string, userName: string}) : RTCPeerConnection => {
     let conn = new RTCPeerConnection(iceServers);
-    const remoteStream = new MediaStream();
     remoteConnections.set(userId, {
         connection: conn,
+        callStarted: false,
         muteState: "muted",
-        stream: remoteStream,
+        mainStream: new MediaStream(),
         userName: userName,
-        recorder: null
+        recorder: null,
+        additionalStreams: new Array<{stream: MediaStream}>(),
+        socket: socket
     });
 
-    setInterval(() => getStats(conn,"audio","inbound-rtp"), 1000);
-
+    setInterval(() => getStats(conn,"audio","inbound-rtp"), 300);
+    
     const newVidHtml = 
     `<div id="remoteVideo-${userId}" class="col-6 d-flex justify-content-center videos" style="position:relative; box-shadow: 0 0 20px  rgb(0, 0, 0) ">`+
-                    `<video autoplay playsinline style="margin: auto; height: 100%; width: 100%;"></video>` + 
-                    `<img id="remoteMuteIcon-${userId}" src="../Public/microphone-mute.svg" style=" width: 5%; height: 5%; "></img>`+
-                    `<span style="font-size: 1.25em; background-color: #0d6efd; color: white; position: absolute; bottom: 0; left: 0; padding: 0.2em">${userName}</span>` +
-                `</div>`;
+    `<video autoplay playsinline style="margin: auto; height: 100%; width: 100%;"></video>` + 
+    `<img id="remoteMuteIcon-${userId}" src="../Public/microphone-mute.svg" style=" width: 5%; height: 5%; "></img>`+
+    `<span style="font-size: 1.25em; background-color: #0d6efd; color: white; position: absolute; bottom: 0; left: 0; padding: 0.2em">${userName}</span>` +
+    `</div>`;
     $("#videoContainer").append(newVidHtml);
-    ($(`#remoteVideo-${userId}`).find("video")[0] as HTMLMediaElement).srcObject = remoteStream;
-
+    ($(`#remoteVideo-${userId}`).find("video")[0] as HTMLMediaElement).srcObject = remoteConnections.get(userId)!.mainStream;
+    
     const newRecordingEntry = `<option value=${userId}>${userName}</option>`;
-    $("#recordingSelection").append(newRecordingEntry);
+    $("#peerSelection").append(newRecordingEntry);
     
     localStream.getTracks().forEach(track => {
-        conn.addTrack(track);
+        const sender = conn.addTrack(track);
     });
 
     conn.ontrack = (trackEvent) => {
         console.log("Received new Tracks from Remote Peer");
-        console.log(trackEvent.track);
-        const remoteStream = remoteConnections.get(userId)!.stream;
-        console.log(remoteStream);
-        addTrackToStream(remoteStream, trackEvent.track);
+        
+        // Wenn wir bereits einen Audio Track empfangen, dann muss der neue
+        // als zusätzlicher Track registriert und in einem neuen MediaStream Objekt 
+        // abgespielt werden. In MediaStreams ist immer nur ein AudioTrack hörbar!
+        const stream = remoteConnections.get(userId)!.mainStream;
+        console.log("Current length of Audio Tracks is " + stream.getAudioTracks().length)
+        if (trackEvent.track.kind == "audio") {
+            if (!stream.getAudioTracks().length) {
+                addTrackToStream(stream, trackEvent.track);
+            } else {
+                let newStream = new MediaStream();
+                newStream.addTrack(trackEvent.track);
+                addAdditionalStream(userId, trackEvent.track);
+            }
+        } else {
+            addTrackToStream(stream, trackEvent.track);
+        }
+        $(".experimental").removeAttr("disabled");
     }
-    conn.onnegotiationneeded = e => {
-        console.log("Negotiation is needed!");
-        if (conn.signalingState != "stable") return;
+    
+    conn.onnegotiationneeded = async (e) => {
+        console.log("Negotiation is needed! " + conn.signalingState.toString());
+        let callHasStarted = false;
+        for (let [_, value] of remoteConnections.entries()) {
+            if (Object.is(value.connection, conn)) {
+                callHasStarted = value.callStarted;
+                return;
+            }
+        }
+        if (conn.signalingState != "stable" || !callHasStarted) return;
+        try {
+            await sendOffer(userId, {});
+        } catch (err) {
+            console.error(err);
+        }
     }
+    
     conn.onicecandidate = async (e) => {
         if (e.candidate) {
             socket.emit("ice-candidates", JSON.stringify(e.candidate));
         }
     }
-
+    
     socket.on("ice-candidates", (candidate: string) => {
         const iceCandidate : RTCIceCandidateInit = JSON.parse(candidate);
         console.log(`Received Peer Ice Candidate ${iceCandidate}`);
         conn.addIceCandidate(iceCandidate);
     })
-
+    
     return conn;
 }
 
-const sendOffer = async (rtcPeerConnection: RTCPeerConnection, socket: Socket) => {
-    let sessionDescription;
+const sendOffer = async (userId: string, codecParams: OpusCodecParameters,initialOffer: boolean = false) => {
+    
+    const connInfo =  remoteConnections.get(userId)!;
+    let sessionDescription: RTCSessionDescriptionInit;
     try {
-        sessionDescription = await rtcPeerConnection.createOffer();
-        rtcPeerConnection.setLocalDescription(sessionDescription);
+        sessionDescription = await connInfo.connection.createOffer();
+        await setOpusCodecParameters(sessionDescription, codecParams);
+        if (!initialOffer && connInfo.connection.signalingState != "stable") return; 
+        await connInfo.connection.setLocalDescription(sessionDescription);
         console.log(sessionDescription.sdp);
-        const myUserName = $(".user-name-input").val();
-        socket.emit('webrtc-offer', JSON.stringify(sessionDescription), myUserName);
-
     } catch (error) {
       console.error(error);
       return;
-    }
+    } 
 
-  };
+    console.log(connInfo.connection.getTransceivers()[0].sender.getParameters());
+
+    if (initialOffer) {
+        const myUserName = $(".user-name-input").val();
+        connInfo.socket.emit('initial-webrtc-offer', JSON.stringify(sessionDescription), myUserName);
+    } else {
+        connInfo.socket.emit('webrtc-offer', JSON.stringify(sessionDescription));
+    }
+};
 
 const sendAnwser = async (rtcPeerConnection: RTCPeerConnection, socket: Socket) => {
     let sessionDescription: RTCSessionDescriptionInit;
@@ -376,35 +516,168 @@ const setupJoinModal = () => {
     modal.attr("id", "activeEntryModal");
     entryModal = new Modal(modal![0], { "backdrop": "static", "keyboard": false });
     entryModal.show();
+    $(".user-name-input").get()[0].focus();
 };
 
-const  setupWebsocketConnection = () => {
+const setupWebsocketConnection = () => {
     const socket = io();
     socket.on("connect", () => { onSocketConnection("connected"); });
     socket.on("disconnect", () => { onSocketConnection("error"); });
     return socket;
 };
 
+const setOpusCodecParameters = (sdp: RTCSessionDescriptionInit, parameters: OpusCodecParameters) : Promise<void> => (
+    new Promise((resolve, reject) => {
+        let sdpObj = sdpUtils.parse(sdp.sdp!);
+        let opusSegment = sdpObj.media.find(mediaSegment => {
+            console.log(mediaSegment);
+            return mediaSegment.type == "audio";
+        });
+        if (!opusSegment) reject("No Opus Media Segment found!");
 
-const setupExperimentalFeatures = (socket: Socket) => {
-    $("#playAudioTrack").on("click", (_) => {
+        opusSegment!.fmtp.forEach(t => console.log(t));
+        let fec = false;
+        if (fec) {
+            opusSegment.payloads = "131 " + opusSegment.payloads;
+            opusSegment.rtp.unshift({payload: 131, codec: "red", rate: 8000, encoding: 2});
+            opusSegment.fmtp.push({payload: 131, config: "111/103/104/9/0/8/106/105/13/110/112/113/126"});
+        }
 
-    });
-    $("#stopAudioTrack").on("click", (_) => {
+        let newFmtp = opusSegment!.fmtp[0];
+        console.log("Old Opus Config - " + newFmtp.config);
+        let params = sdpUtils.parseParams(newFmtp.config);
+        for (const [param, val] of Object.entries(parameters)) {
+            params[param] = val;
+        }
+        var config: string = "";
+        for (const [parameter, value] of Object.entries(params)) {
+            config += `${parameter}=${value};`;
+        }
+        let mungedSdp: string;
+        newFmtp.config = config;
+        console.log("New Opus Config - " + newFmtp.config);
+        opusSegment!.fmtp[0] = newFmtp;
+        mungedSdp = sdpUtils.write(sdpObj);
+        sdp.sdp = mungedSdp;
+        console.log(mungedSdp);
+        resolve();
+    })
+);
 
-    });
-    $("#openAudioTrack").on("click", (_) => {
+const applyNewSessionParameters = async (codecParams: OpusCodecParameters) => {
+    const selectedPeer = $("#peerSelection").val() as string;
+    if (!selectedPeer) return;
+    try {
+        await sendOffer(selectedPeer, codecParams); 
+    } catch(err) {
+        console.log(err);
+    }
+};
+
+const applyAudioProcessing = (config: MediaTrackConstraints) => {
+    const selectedPeer = $("#peerSelection").val() as string;
+    if (!selectedPeer) return;
+    updateLocalAudioTrack(selectedPeer, config);
+};
+
+/* 
+    EXPERIMENTAL FEATURES FOR INVESTIGATING AUDIO QUALITY
+*/
+const setupExperimentalFeatures = () => {
+
+    $(".experimental").attr("disabled", "true");
+
+    $("#openFile").on("click", (_) => {
         $("#file-input").trigger("click");
     });
 
-    $("#recordingSelection").append()
+    $("#playAdditionalTrack").on("click", () => {
+        if (!filePlayback.ctx || !filePlayback.buffer || !filePlayback.dest) return;
 
+        let source = filePlayback.ctx.createBufferSource();
+        source.buffer = filePlayback.buffer;
+        if (($("#checkLocalPlayback").get()[0] as HTMLInputElement).checked) {
+            source.connect(filePlayback.ctx.destination);
+        }
+        source.connect(filePlayback.dest);
+        filePlayback.currentSource = source;
+        source.start();
+    });
+    
+    $("#stopAdditionalTrack").on("click", () => {
+        filePlayback.currentSource?.stop();
+    });
+    
+    $("#file-input").on("change", (_) => {
+        const files = ($("#file-input")[0] as HTMLInputElement).files;
+        const selectedPeer = $("#peerSelection").val() as string;
+        const conn = remoteConnections.get(selectedPeer)?.connection;
+
+        if (files!.length) {
+            let reader = new FileReader();
+            reader.onload = (e) => {
+                filePlayback.ctx.decodeAudioData(e.target!.result as ArrayBuffer, (buffer) => {
+                    filePlayback.buffer = buffer;
+                });
+                filePlayback.dest = filePlayback.ctx.createMediaStreamDestination();
+                conn!.addTrack(filePlayback.dest.stream.getAudioTracks()[0]);
+            };
+            reader.readAsArrayBuffer(files![0]);
+        }
+    });
+
+    $("#downloadRecording").on("click", (e) => {
+        const selectedPeer = $("#peerSelection").val() as string;
+        const recorder = remoteConnections.get(selectedPeer)?.recorder;
+        if (!selectedPeer || !recorder || !recorder.fileAvailable()) {
+            e.preventDefault();
+            alert("Cannot download file");
+        }
+    });
+
+    $("#checkInbandFEC").on("click", (_) => {
+        const use = $("#checkInbandFEC").is(':checked') ? 1 : 0;
+        applyNewSessionParameters({useinbandfec: use});
+    });
+
+    $("#checkOutOfBandFEC").on("click", (e) => {
+    });
+
+    $("#checkDtx").on("click", (_) => {
+        const use = $("#checkDtx").is(':checked') ? 1 : 0;
+        applyNewSessionParameters({usedtx: use});
+    });
+
+    $("#checkMaxBitrate").on("click", (_) => {
+        const use = $("#checkMaxBitrate").is(':checked') ? 1 : 0;
+        applyNewSessionParameters({maxaveragebitrate: use ? 510000 : 32000});
+    });
+
+    $("#checkStereo").on("click", (_) => {
+        const use = $("#checkStereo").is(':checked') ? 1 : 0;
+        applyNewSessionParameters({stereo: use});
+    });
+
+    $("#checkAGC").attr("checked", "true");
+    $("#checkAGC").on("click", (_) => {
+        applyAudioProcessing({autoGainControl: $("#checkAGC").is(':checked')});
+    });
+    
+    $("#checkNS").attr("checked", "true");
+    $("#checkNS").on("click", (_) => {
+        applyAudioProcessing({noiseSuppression: $("#checkNS").is(':checked')});
+    });
+    
+    $("#checkEC").attr("checked", "true");
+    $("#checkEC").on("click", (_) => {
+        applyAudioProcessing({echoCancellation: $("#checkEC").is(':checked')});
+    });
 
     $("#startRecording").on("click", (_) => {
-        const selectedPeer = $("#recordingSelection").val() as string;
+        const selectedPeer = $("#peerSelection").val() as string;
         console.log(selectedPeer);
         if (selectedPeer && remoteConnections.get(selectedPeer)?.recorder == null) {
-            let peerStream = remoteConnections.get(selectedPeer)?.stream;
+            let peerStream = remoteConnections.get(selectedPeer)?.mainStream;
             let peerRecorder = new WavRecorder(peerStream!);
             remoteConnections.get(selectedPeer)!.recorder = peerRecorder;
         }
@@ -416,7 +689,7 @@ const setupExperimentalFeatures = (socket: Socket) => {
     });
 
     $("#stopRecording").on("click", (_) => {
-        const selectedPeer = $("#recordingSelection").val() as string;
+        const selectedPeer = $("#peerSelection").val() as string;
         console.log(selectedPeer);
         let peerRecorder = remoteConnections.get(selectedPeer)?.recorder;
         if (peerRecorder) {
@@ -443,7 +716,8 @@ const getStats = async (conn: RTCPeerConnection, kind: "audio" | "video" ,type: 
         console.log(err);
     } 
     $("#codecStatsText").html(statsOutput);
-  };
+};
+
 
 document.addEventListener("DOMContentLoaded", async () => {
     
@@ -461,7 +735,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const socket = setupWebsocketConnection();
     setupUi(socket);
-    setupExperimentalFeatures(socket);
+    setupExperimentalFeatures();
 
     console.log("Finished Loading");
 });

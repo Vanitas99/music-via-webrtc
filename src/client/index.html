@@ -74,7 +74,7 @@
                     <div class="modal-body">
                         <div class="container">
                             <div class="row justify-content-center my-4">
-                                <input type="text" class="form-control user-name-input" placeholder="Your name"/>
+                                <input type="text" autofocus class="form-control user-name-input" placeholder="Your name"/>
                             </div>
                             <div class="row justify-content-center my-4">
                                 <div class="input-group">
@@ -122,51 +122,80 @@
     </div>
     
 
-    <div class="wrapper" style="width:100%; align-items: stretch; display: flex;">
+    <div class="wrapper overflow-hidden" style="width:100%; align-items: stretch; display: flex;">
         
         <!-------------------------SIDE BAR----------------------->
-        <div id="sidebar" class="active d-flex flex-column" style="overflow-y: auto; min-width: 20vw; max-width: 20vw; min-height: 100vh;">
+        <div id="sidebar" class="active d-flex flex-column">
             <div class="d-flex flex-column justify-content-center">
                 <strong class="mx-auto">Codec Stats</strong>
                 <div id="codecStatsText">
                 </div>
                 <hr>
             </div>
+            <strong class="mx-auto">Select the peer to test with</strong>
+            <select id="peerSelection" class="form-select">
+            </select>
+            <hr>
             <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Externe Audio Datei senden</strong>
-                <div class="d-flex justify-content-center">
-                    <button id="playAudioTrack" class="btn btn-secondary mx-auto">Play</button>
-                    <button id="stopAudioTrack" class="btn btn-secondary mx-auto">Stop</button>
-                    <button id="openAudioTrack" class="btn btn-secondary mx-auto">Open</button>
-                    <input id="file-input" type="file" name="name" style="display: none;" />
+                <strong class="mx-auto">Recording Remote Peer</strong>
+                <button id="startRecording" class="experimental btn btn-secondary mx-auto">Start</button>
+                <button id="stopRecording" class="experimental btn btn-secondary mx-auto">Stop</button>
+                <a id="downloadRecording" class="experimental mx-auto" style="color: black;" href="" download="">Download</a>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <strong class="mx-auto">Add new Track</strong>
+                <button id="openFile" class="experimental btn btn-secondary mx-auto">Open File</button>
+                <button id="playAdditionalTrack" class="experimental btn btn-secondary mx-auto">Play Track</button>
+                <button id="stopAdditionalTrack" class="experimental btn btn-secondary mx-auto">Stop Track</button>
+                <button id="removeTrack" class="experimental btn btn-secondary mx-auto">Remove Track</button>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkLocalPlayback">
+                    <label class="form-check-label" for="checkLocalPlayback">Selber hören</label>
+                </div>
+                <input id="file-input" type="file" name="name" style="display: none;"/>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <strong class="mx-auto">Switch Processing</strong>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkAGC">
+                    <label class="experimental form-check-label" for="checkAGC">Automatic Gain Control</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkEC">
+                    <label class="form-check-label" for="checkEC">Echo Cancellation</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkNS">
+                    <label class="form-check-label" for="checkNS">Noise Supression</label>
+                </div>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <strong class="mx-auto" >Change Opus Parameters</strong>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkInbandFEC">
+                    <label class="form-check-label" for="checkInbandFEC">Opus Inband Fec</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkOutOfBandFEC">
+                    <label class="form-check-label" for="checkOutOfBandFEC">Out-of-Band Fec</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkDtx">
+                    <label class="form-check-label" for="checkDtx">Dtx</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkMaxBitrate">
+                    <label class="form-check-label" for="checkMaxBitrate">maxaveragebitrate</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkStereo">
+                    <label class="form-check-label" for="checkStereo">Prefer Stereo</label>
                 </div>
                 <hr>
             </div>
-            <div class="d-flex flex-column justify-content-center">
-                <strong>Recording Remote Peer</strong>
-                <select id="recordingSelection" class="form-select">
-                </select>
-                <button id="startRecording" class="btn btn-secondary mx-auto">Start</button>
-                <button id="stopRecording" class="btn btn-secondary mx-auto">Stop</button>
-                <a id="downloadRecording" href="" download="">Download</a>
-                <hr>
-            </div> 
-            <div class="d-flex flex-column justify-content-center">
-                <span>Test Feature 1</span>
-                <button class="btn btn-secondary mx-auto">Toggle</button>
-                <hr>
-            </div> 
-            <div class="d-flex flex-column justify-content-center">
-                <span>Test Feature 1</span>
-                <button class="btn btn-secondary mx-auto">Toggle</button>
-                <hr>
-            </div> 
-            <div class="d-flex flex-column justify-content-center">
-                <span>Test Feature 1</span>
-                <button class="btn btn-secondary mx-auto">Toggle</button>
-                <hr>
-            </div>
-
         </div>    
         <!-------------------------MAIN PAGE----------------------->
         <div id="mainPage" class="container-fluid">      
@@ -179,7 +208,9 @@
                 <div class="col-6 d-flex justify-content-center videos" style="box-shadow: 0 0 20px rgb(0,0,0);">
                     <video muted autoplay playsinline id="localVideo" style="margin: auto; width: 100%; height: 100%; ;"></video>
                 </div>    
-            
+            </div>
+
+            <div id="audioContainer">
             </div>
             
             <div class="row" style="height: 10vh">

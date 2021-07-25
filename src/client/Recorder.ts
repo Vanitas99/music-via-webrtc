@@ -40,8 +40,8 @@ export class WavRecorder {
     private renderBlob = (data: Blob) => {
         const downloadUrl = URL.createObjectURL(data);
         const now = new Date();
-        const name = `recording-${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDay().toString().padStart(2, '0')}--${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}.webm`;
-        $("#downloadRecording").attr("href", downloadUrl).attr("download", );
+        const name = `recording-${now.getDay().toString().padStart(2, '0')}--${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}.wav`;
+        $("#downloadRecording").attr("href", downloadUrl).attr("download", name);
         this._fileAvailable = true;
     };
 

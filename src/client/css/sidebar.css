@@ -5,7 +5,10 @@
     transition: all 0.3s;
     min-width: 20vw;
     max-width: 20vw;
-    min-height: 100vh;
+    height: 100vh;
+    padding: 0 2% 0 2%;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 #sidebar.active {
@@ -52,4 +55,19 @@ a[data-toggle="collapse"] {
     top: 50%;
     right: 20px;
     transform: translateY(-50%);
+}
+
+::-webkit-scrollbar {
+    width: 12px;
+}
+
+::-webkit-scrollbar-track {
+    -webkit-box-shadow: inset 0 0 6px rgba(200,200,200,1);
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 10px;
+    background-color:#fff;
+    -webkit-box-shadow: inset 0 0 6px rgba(90,90,90,0.7);
 }
