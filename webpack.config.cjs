@@ -37,4 +37,24 @@ module.exports = [{
             ]  
         })
     ]},
+
+    {
+        mode: 'development',
+        entry: './src/client/electron/electron.ts',
+        watch: !production,
+        output: {
+          path: path.resolve('dist'),
+          filename: 'electron.cjs'
+        },
+        target: 'electron-main',
+        module: {
+            rules: [
+                {
+                    test: /\.ts$/,
+                    include: /src/,
+                    use: [{ loader: 'ts-loader' }]
+                }
+            ]
+        },
+      }
 ];

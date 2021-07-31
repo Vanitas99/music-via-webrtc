@@ -125,6 +125,7 @@ const setupUi = (socket: Socket) => {
                 entryModal.hide();
                 entryModal.dispose();
                 $("#meetingIdSpan").text(roomId);
+                filePlayback.ctx.resume();
             });
             const id = roomIdToJoin ? roomIdToJoin : $("#roomId").val();
             const userName = $("#activeEntryModal").find("input").val();
@@ -188,6 +189,7 @@ const setupUi = (socket: Socket) => {
         } catch (err) {
             console.error(err);
         }
+        
     });
 
     socket.on("webrtc-offer", async (userId: string, sdp: string) => {
@@ -828,7 +830,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const socket = setupWebsocketConnection();
     setupUi(socket);
     setupExperimentalFeatures();
-
     console.log("Finished Loading");
 });
 
