@@ -31,38 +31,6 @@
                             <div class="row justify-content-center my-4">
                                 <button class="btn btn-primary" id="createRoom" style="width: 50%;">Create new Room</button>
                             </div>
-                            <div class="row justify-content-center">
-                                <div class="col d-flex flex-column justify-content-center">
-                                    <div class="dropdown">
-                                        <a id="selectMic" role="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Microphone</a>
-                                        <div class="dropdown-menu" id="micSelection">
-                                        </div>
-                                    </div>
-                                    <div class="dropdown">
-                                        <button id="selectSpeaker"  class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Speaker</button>
-                                        <div class="dropdown-menu" id="speakerSelection">
-                                        </div>
-                                    </div>
-                                    <div class="dropdown">
-                                        <a class="btn btn-primary dropdown-toggle" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                            Dropdown link
-                                        </a>
-                                        <div class="dropdown-menu" id="camSelection">
-                                        </div>
-                                    </div>
-                                    <div class="dropdown">
-                                        <button class="btn btn-secondary dropdown-toggle" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                            Dropdown link
-                                        </button>
-                                        
-                                        <div class="dropdown-menu" aria-labelledby="dropdownMenuLink">
-                                            <a class="dropdown-item">Action</a>
-                                            <a class="dropdown-item">Another action</a>
-                                            <a class="dropdown-item">Something else here</a>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </div>    
                 </div>
@@ -80,27 +48,6 @@
                                 <div class="input-group">
                                     <div class="input-group-prepend">
                                         <button class="btn btn-primary joinRoom" id="joinRoom">Join</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row justify-content-center">
-                                <div class="col d-flex justify-content-center">
-                                    <div class="btn-group dropup">
-                                        <div class="btn-group dropup">
-                                            <button id="selectMic" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Microphone</button>
-                                            <ul class="dropdown-menu" id="micSelection">
-                                            </ul>
-                                        </div>
-                                        <div class="btn-group dropup">
-                                            <button id="selectSpeaker" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Speaker</button>
-                                            <ul class="dropdown-menu" id="speakerSelection">
-                                            </ul>
-                                        </div>
-                                        <div class="btn-group dropup">
-                                            <button id="selectCam" type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">Camera</button>
-                                            <ul class="dropdown-menu" id="camSelection">
-                                            </ul>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -127,8 +74,11 @@
         <!-------------------------SIDE BAR----------------------->
         <div id="sidebar" class="active d-flex flex-column">
             <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Codec Stats</strong>
-                <div id="codecStatsText">
+                <strong class="mx-auto">RTP Audio Statistik</strong>
+                <div id="recvStats">
+                </div>
+                <hr>
+                <div id="sendStats">
                 </div>
                 <hr>
             </div>
@@ -180,7 +130,7 @@
                 </div>
                 <div class="form-check form-switch">
                     <input class="experimental form-check-input bg-warning" type="checkbox" id="checkOutOfBandFEC">
-                    <label class="form-check-label" for="checkOutOfBandFEC">Out-of-Band Fec</label>
+                    <label class="form-check-label" for="checkOutOfBandFEC">Prefer RED FEC Codec</label>
                 </div>
                 <div class="form-check form-switch">
                     <input class="experimental form-check-input bg-warning" type="checkbox" id="checkDtx">
@@ -194,9 +144,31 @@
                     <input class="experimental form-check-input bg-warning" type="checkbox" id="checkStereo">
                     <label class="form-check-label" for="checkStereo">Prefer Stereo</label>
                 </div>
+                <label>Audio Frame Größe in ms</label>
+                <div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input bg-warning" name="frameSize" type="radio" id="frameSizeRadio10" value="10">
+                        <label class="form-check-label" for="inlineRadio1">10</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input bg-warning" name="frameSize" type="radio" id="inlineRadio2" value="20">
+                        <label class="form-check-label" for="inlineRadio2">20</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input experimental bg-warning" name="frameSize" type="radio" id="inlineRadio3" value="60">
+                        <label class="form-check-label" for="inlineRadio3">60</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input experimental bg-warning" name="frameSize" type="radio" id="inlineRadio4" value="120">
+                        <label class="form-check-label" for="inlineRadio4">120</label>
+                    </div>
+                </div>
+                
+                <button id="applyParameterChanges" class="mx-auto btn btn-primary"> Apply Changes</button>
                 <hr>
             </div>
         </div>    
+
         <!-------------------------MAIN PAGE----------------------->
         <div id="mainPage" class="container-fluid">      
             <div class="row justify-content-center"  style="height: 10vh;">
@@ -234,9 +206,6 @@
                 </div>
             </div>
         </div>
-
-        
-
     </div>    
     
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js" crossorigin="anonymous"></script>

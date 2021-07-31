@@ -1,0 +1,16 @@
+VISQOL Test Cases:
+
+1. Clear Audio With 510 kbits Stereo          
+    1.1 DTX off                             MOS: bis  
+    1.2 With on                             MOS: bis 
+
+2. Clear Audio With 128 kbits Stereo        
+    2.1 DTX off                             MOS: bis  
+    2.2 With on                             MOS: bis 
+
+3. Loss 10% Opus FEC                        MOS: bis
+4. Loss 25% Opus FEC                        MOS: bis
+5. Loss 50% Opus FEC                        MOS: bis
+5. Loss 10% RED FEC                         MOS: bis
+6. Loss 25% REF FEC                         MOS: bis
+7. Loss 50% RED FEC                         MOS: bis

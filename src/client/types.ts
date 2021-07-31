@@ -11,8 +11,30 @@ export type RemoteConnectionInfo = {
     mainStream: MediaStream,        // Stream, that holds the video and microphone remote tracks
     additionalStreams: {stream: MediaStream, src?: AudioBufferSourceNode}[], // 
     recorder: WavRecorder | null,
-    socket: Socket
-};
+    socket: Socket,
+    datachannel?: RTCDataChannel,
+    codecConfiguration: { codec: PreferedCodec, params: OpusCodecParameters},
+    statistics: Statistics | null
+};        
+
+export type Statistics = { 
+    inboundAudio: {
+        Jitter: Number, 
+        JitterBufferDelay: Number, 
+        PacketsLost: Number,
+        TotalBytesRate: Number, 
+        HeaderBytesRate: Number,
+        FecPacktesRecv: Number, 
+        FecPacketsDiscarded: Number,
+        InsertedSamplesRate: Number, 
+        RemovedSamplesRate: Number
+    }, 
+    outboundAudio: {
+        PacketsSentRate: Number,
+        TotalBytesRate: Number,
+        HeaderBytesRate: Number
+    }
+}
 
 export type OpusCodecParameters = {
     "ptime"?: number,
@@ -26,4 +48,6 @@ export type OpusCodecParameters = {
     "cbr"?: number,
     "useinbandfec"?: number,
     "usedtx"?: number
-}
+};
+
+export type PreferedCodec = "opus" | "red-fec";

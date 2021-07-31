@@ -1,21 +1,19 @@
 import { io, Socket } from "socket.io-client";
-import { Toast , Modal} from "bootstrap";
+import { Toast , Modal, Alert} from "bootstrap";
 import { WavRecorder } from "./Recorder";
-import { MuteState, SharingState, RemoteConnectionInfo , OpusCodecParameters} from "./types";
+import { MuteState, SharingState, RemoteConnectionInfo , OpusCodecParameters, PreferedCodec, Statistics} from "./types";
+//@ts-ignore
+import { StatsRatesCalculator, StatsReport } from "./RateCalculator";
+import copy from 'copy-text-to-clipboard';
 import * as c from "./constants";
-
 import * as sdpUtils from "sdp-transform";
 
-import copy from 'copy-text-to-clipboard';
+let streamingMusic = false;
 
 let localMicState: MuteState = "muted";
 let localSpeakerState: MuteState = "unmuted";
 let localCamSate: SharingState = "not-sharing";
 let localSSState: SharingState = "not-sharing";
-
-let currentMic: string;
-let currentSpeaker: string;
-let currentCam: string;
 
 let deviceSelections: HTMLUListElement[] = [];
 
@@ -39,7 +37,7 @@ let filePlayback : {
 // auszuhandlen (onnegotiationneeded), d.h. beide einen webrtc-offer senden, dann wird der "nette" Peer
 // seinen Verhandlungsversuch abbrechen und erst versuchen neu zu verhandeln, wenn die Verbindung in einem
 // stabilen Zustand ist. (RTCPeerConnection.signalingState == "stable")!
-let amIPolite: boolean;
+let amIPolite: boolean = false;
 
 // Kostenlose Stun Server von Google. Nicht mehr als 2 nutzen.
 const iceServers = {
@@ -47,40 +45,7 @@ const iceServers = {
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' }
     ],
-  }
-
-const populateDeviceList= async () => {
-
-    let [ micSelection, speakerSelection, camSelection] = deviceSelections; 
-    deviceSelections.forEach(obj => {
-        while (obj.firstChild) {
-            obj.removeChild(obj.firstChild);
-        }
-    });
-
-    console.log("Grabbing Media Devices");
-    try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        devices.forEach(
-            device => {
-                console.log(device.label, device.kind, device.groupId)
-                let a = document.createElement("a");
-                a.className = "dropdown-item";
-                a.id = device.deviceId;
-                a.href = "#";
-                a.innerText = device.label;
-                if (device.kind == "audioinput") {
-                    micSelection.appendChild(a);
-                } else if (device.kind == "audiooutput") {
-                    speakerSelection.appendChild(a);
-                } else {
-                    camSelection.appendChild(a);
-                }
-        });  
-    } catch (err) {
-        console.error(err);
-    }
-};
+}
 
 const setupUi = (socket: Socket) => {
 
@@ -103,6 +68,7 @@ const setupUi = (socket: Socket) => {
 
     let bSpeaker = $("#speakerButton");
     bSpeaker?.on('click', (e) => {
+
         const element = (e.target as HTMLButtonElement);
         
         localSpeakerState = localSpeakerState == "muted" ? "unmuted" : "muted";
@@ -141,13 +107,6 @@ const setupUi = (socket: Socket) => {
             track.enabled = localCamSate == "sharing";
         });
     });
-    deviceSelections.push(
-        $("#activeEntryModal").find("#micSelection").get()[0] as HTMLUListElement,
-        $("#activeEntryModal").find("#speakerSelection").get()[0] as HTMLUListElement, 
-        $("#activeEntryModal").find("#camSelection").get()[0] as HTMLUListElement
-    );
-    
-    populateDeviceList();
 
     $("#selectMic").on("click", () => {
         $(".dropdown-toggle").dropdown();
@@ -219,13 +178,12 @@ const setupUi = (socket: Socket) => {
     socket.on("initial-webrtc-offer", async (userId: string, userName: string, sdp: string) => {
         console.log("Received Inital Offer");
         let remoteSdp : RTCSessionDescriptionInit = JSON.parse(sdp);
-        console.log(remoteSdp.sdp);
         amIPolite = true;
         try {
             await setLocalStream(true, {width: 1920, height: 1080});
             let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
             await conn.setRemoteDescription(remoteSdp);
-            await sendAnwser(conn, socket);
+            await sendAnwser(userId);
             remoteConnections.get(userId)!.callStarted = true;
         } catch (err) {
             console.error(err);
@@ -257,7 +215,7 @@ const setupUi = (socket: Socket) => {
         }
 
         try {
-            await sendAnwser(conn!, socket);
+            await sendAnwser(userId,);
         } catch (err) {
             console.error(err);
         }
@@ -272,23 +230,18 @@ const setupUi = (socket: Socket) => {
 
     socket.on("new-participant", async (userId: string, userName:string, state: MuteState) => {
             console.log(`User ${userName} (${userId}) joined the room`);
-            let conn = setupPeerConnection(socket, {userId: userId, userName: userName});
-            await sendOffer(userId, {
-                cbr: 1,
-                usedtx: 0,
-                stereo: 0,
-                useinbandfec: 0,
-                maxaveragebitrate: 32000
-            }, true);
+            let conn = setupPeerConnection(socket, {userId: userId, userName: userName}, true);
+            await sendOffer(userId, true);
             remoteConnections.get(userId)!.callStarted = true;
-            
     });
+    
     socket.on("participant-left", (id: string) => {
         console.log("Participant left: " + id);
         remoteConnections.get(id)!.connection.close();
         remoteConnections.delete(id);
         $("#remoteVideo-" + id).remove();
     });
+
     socket.on("user-changed-mute-state", (userId: string, newState: MuteState) => {
         console.log("Mute State Change");
         remoteConnections.get(userId)!.muteState = newState;
@@ -362,7 +315,7 @@ const addAdditionalStream = (userId: string, track: MediaStreamTrack) => {
     $("#audioContainer").append(audioElement);
 };
 
-const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: string, userName: string}) : RTCPeerConnection => {
+const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: string, userName: string}, createDataChannel: boolean = false) : RTCPeerConnection => {
     let conn = new RTCPeerConnection(iceServers);
     remoteConnections.set(userId, {
         connection: conn,
@@ -372,11 +325,81 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
         userName: userName,
         recorder: null,
         additionalStreams: new Array<{stream: MediaStream}>(),
-        socket: socket
+        socket: socket,
+        codecConfiguration: {
+            codec: "opus", 
+            params: {
+                cbr: 1,
+                stereo: 0,
+                maxptime: 120,
+                usedtx: 0,
+                useinbandfec: 0,
+                maxaveragebitrate: 32000
+            }   
+        },
+        statistics: null
     });
 
-    setInterval(() => getStats(conn,"audio","inbound-rtp"), 300);
-    
+    /*
+    Mittels Webrtc DataChannel können arbtiräre Daten von Browser zu Browser verschlüsselt übertragen werden.
+    Zukünftige SDP Verhandlungen müssen nicht zwangsweiße über den Server laufen, sondern können direkt ausgetauscht werden.
+    */
+   const onSdpMessage = async ({data} : MessageEvent) => {
+       const remoteSdp: RTCSessionDescriptionInit = JSON.parse(data);
+       console.log(`[SDP Channel] Received ${remoteSdp.type}`);
+       if (!conn) return;
+
+        if (remoteSdp.type == "offer") {
+           const conn = remoteConnections.get(userId)?.connection;
+           
+           if (conn.signalingState != "stable") {
+               if (!amIPolite) return;
+               try {
+                   await Promise.all([
+                       conn.setLocalDescription({type: "rollback"}),
+                       conn.setRemoteDescription(remoteSdp)
+                    ]);
+               } catch (err) {
+                   console.error(err);
+                } 
+            } else {
+                try {
+                    await conn.setRemoteDescription(remoteSdp);
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+            try {
+                await sendAnwser(userId,);
+            } catch (err) {
+                console.error(err);
+            }
+        } else if (remoteSdp.type == "answer") {
+            await remoteConnections.get(userId)!.connection.setRemoteDescription(remoteSdp);
+        }
+        
+
+   };
+
+   if (createDataChannel) {
+        remoteConnections.get(userId)!.datachannel = conn.createDataChannel("SDP Channel");
+        remoteConnections.get(userId)!.datachannel.onmessage = onSdpMessage;
+    } else {
+        conn.ondatachannel = (e) => {
+            remoteConnections.get(userId)!.datachannel = e.channel;
+            remoteConnections.get(userId)!.datachannel.onmessage = onSdpMessage;
+        };
+    }
+
+    /* 
+        In bestimmten Intervallen sollen die Statistiken aus der getStats() Api aktuallisiert und angezeigt werden.
+        Um die absoluten Werte in Raten umzuwandeln wird eine modifierte Version des stats_rates_calculator.js aus den webrtc-internals 
+        genutzt. Hierbei interessieren uns primär Werte für den eingehenden und ausgehenden Audio RTP Stream
+    */
+    let inboundRatesCalc = new StatsRatesCalculator();
+    let outboundRatesCalc = new StatsRatesCalculator();
+    setInterval(() => getAudioStats(userId, inboundRatesCalc, outboundRatesCalc), 300);
+
     const newVidHtml = 
     `<div id="remoteVideo-${userId}" class="col-6 d-flex justify-content-center videos" style="position:relative; box-shadow: 0 0 20px  rgb(0, 0, 0) ">`+
     `<video autoplay playsinline style="margin: auto; height: 100%; width: 100%;"></video>` + 
@@ -391,6 +414,19 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
     
     localStream.getTracks().forEach(track => {
         const sender = conn.addTrack(track);
+        let transceiver = conn.getTransceivers()[0];
+       
+        /* Experimentelle API um den RTP Agent auf eine gewünschte Verzögerung zwischen 
+        Eintritt und Austritt von Audio Frames im JitterBuffer hinzuweisen
+        */
+        //@ts-ignore
+        transceiver.receiver.playoutDelayHint = 0;
+
+        // Initialen Codec setzen. Wir starten mit reinem Opus ohne externes FEC.
+        conn.getTransceivers()[0].setCodecPreferences([
+            {mimeType: "audio/opus", clockRate: 48000,channels: 2, sdpFmtpLine: "minptime=10;useinbandfec=1"},
+            {mimeType: "audio/red", clockRate: 48000, channels: 2}, 
+        ]);
     });
 
     conn.ontrack = (trackEvent) => {
@@ -415,6 +451,9 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
         $(".experimental").removeAttr("disabled");
     }
     
+    /*
+        Wenn ein neuer AudioTrack zur Remote Verbindung hinzugefügt wird, muss dies hier extra behandelt werden.
+     */
     conn.onnegotiationneeded = async (e) => {
         console.log("Negotiation is needed! " + conn.signalingState.toString());
         let callHasStarted = false;
@@ -426,7 +465,7 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
         }
         if (conn.signalingState != "stable" || !callHasStarted) return;
         try {
-            await sendOffer(userId, {});
+            await sendOffer(userId);
         } catch (err) {
             console.error(err);
         }
@@ -447,38 +486,43 @@ const setupPeerConnection = (socket: Socket, {userId, userName} : {userId: strin
     return conn;
 }
 
-const sendOffer = async (userId: string, codecParams: OpusCodecParameters,initialOffer: boolean = false) => {
+const sendOffer = async (userId: string,initialOffer: boolean = false) => {
     
     const connInfo =  remoteConnections.get(userId)!;
     let sessionDescription: RTCSessionDescriptionInit;
     try {
         sessionDescription = await connInfo.connection.createOffer();
-        await setOpusCodecParameters(sessionDescription, codecParams);
+        // Die gewünschten Opus Parameter müssen bei jedem Offer neu in das SDP eingefügt werden, 
+        // bevor das SDP lokal gesetzt wird.
+        await setOpusCodecParameters(sessionDescription, connInfo.codecConfiguration.params);
         if (!initialOffer && connInfo.connection.signalingState != "stable") return; 
         await connInfo.connection.setLocalDescription(sessionDescription);
-        console.log(sessionDescription.sdp);
     } catch (error) {
       console.error(error);
       return;
     } 
 
-    console.log(connInfo.connection.getTransceivers()[0].sender.getParameters());
-
+    // Der initiale Webrtc Offer wird über unseren Signaling Server geschickt, alle folgenden können wir über Datenkanäle senden
     if (initialOffer) {
         const myUserName = $(".user-name-input").val();
         connInfo.socket.emit('initial-webrtc-offer', JSON.stringify(sessionDescription), myUserName);
     } else {
-        connInfo.socket.emit('webrtc-offer', JSON.stringify(sessionDescription));
+        connInfo.datachannel?.send(JSON.stringify(sessionDescription));
     }
 };
 
-const sendAnwser = async (rtcPeerConnection: RTCPeerConnection, socket: Socket) => {
+const sendAnwser = async (userId: string) => {
     let sessionDescription: RTCSessionDescriptionInit;
+    const connInfo =  remoteConnections.get(userId)!;
     try {
-        sessionDescription = await rtcPeerConnection.createAnswer();
-        rtcPeerConnection.setLocalDescription(sessionDescription);
-        socket.emit("webrtc-answer", JSON.stringify(sessionDescription));
-
+        sessionDescription = await connInfo.connection.createAnswer();
+        await setOpusCodecParameters(sessionDescription, connInfo.codecConfiguration.params);
+        connInfo.connection.setLocalDescription(sessionDescription);
+        if (connInfo.datachannel?.readyState == "open") {
+            connInfo.datachannel.send(JSON.stringify(sessionDescription));
+        } else {
+            connInfo.socket.emit("webrtc-answer", JSON.stringify(sessionDescription));
+        }
     } catch (error) {
         console.error(error);
         return;
@@ -491,12 +535,10 @@ const onSocketConnection = (state: "connected" | "error") => {
         $("#connectionToastHeader").addClass("bg-success");
         $("#connectionToast").addClass("bg-success");
         $("#connectionToastBody").text("You are connected to the webserver!");
-
     } else {
         $("#connectionToastHeader").addClass("bg-danger");
         $("#connectionToast").addClass("bg-danger");
         $("#connectionToastBody").text("You are not connected to the webserver!");
-
     }  
     const toast = new Toast(toastElement[0],{animation: true, delay: 10000});
     toast.hide();
@@ -509,7 +551,6 @@ const setupGeneralModal = () => {
     entryModal = new Modal(modal![0], { "backdrop": "static", "keyboard": false });
     entryModal.show();
 };
-
 
 const setupJoinModal = () => {
     const modal = $("#joinRoomModal");
@@ -535,17 +576,16 @@ const setOpusCodecParameters = (sdp: RTCSessionDescriptionInit, parameters: Opus
         });
         if (!opusSegment) reject("No Opus Media Segment found!");
 
-        opusSegment!.fmtp.forEach(t => console.log(t));
-        let fec = false;
-        if (fec) {
-            opusSegment.payloads = "131 " + opusSegment.payloads;
-            opusSegment.rtp.unshift({payload: 131, codec: "red", rate: 8000, encoding: 2});
-            opusSegment.fmtp.push({payload: 131, config: "111/103/104/9/0/8/106/105/13/110/112/113/126"});
-        }
-
-        let newFmtp = opusSegment!.fmtp[0];
-        console.log("Old Opus Config - " + newFmtp.config);
-        let params = sdpUtils.parseParams(newFmtp.config);
+        let fmtpIndex = -1;
+        let newFmtp = opusSegment!.fmtp.find((ftmp,i) => {
+            if (ftmp.payload === 111) {
+                fmtpIndex = i;
+                return true;
+            } 
+            return false;
+        });
+        console.log("Old Opus Config - " + newFmtp!.config);
+        let params = sdpUtils.parseParams(newFmtp!.config);
         for (const [param, val] of Object.entries(parameters)) {
             params[param] = val;
         }
@@ -554,21 +594,35 @@ const setOpusCodecParameters = (sdp: RTCSessionDescriptionInit, parameters: Opus
             config += `${parameter}=${value};`;
         }
         let mungedSdp: string;
-        newFmtp.config = config;
-        console.log("New Opus Config - " + newFmtp.config);
-        opusSegment!.fmtp[0] = newFmtp;
+        newFmtp!.config = config;
+        console.log("New Opus Config - " + newFmtp!.config);
+        opusSegment!.fmtp[fmtpIndex] = newFmtp!;
         mungedSdp = sdpUtils.write(sdpObj);
         sdp.sdp = mungedSdp;
         console.log(mungedSdp);
         resolve();
     })
 );
+    
 
-const applyNewSessionParameters = async (codecParams: OpusCodecParameters) => {
+const applyNewSessionParameters = async (preferedCodec: PreferedCodec, codecParams: OpusCodecParameters) => {
     const selectedPeer = $("#peerSelection").val() as string;
     if (!selectedPeer) return;
+    const opusCodec = {mimeType: "audio/opus", clockRate: 48000,channels: 2, sdpFmtpLine: "minptime=10;useinbandfec=1"};
+    const redCodec = {mimeType: "audio/red", clockRate: 48000, channels: 2};
     try {
-        await sendOffer(selectedPeer, codecParams); 
+        remoteConnections.get(selectedPeer)!.codecConfiguration.params = codecParams;
+        remoteConnections.get(selectedPeer)!.codecConfiguration.codec = preferedCodec;
+        let codecs: RTCRtpCodecCapability[] = [];
+        if (preferedCodec == "opus") {
+            codecs.push(opusCodec);
+            codecs.push(redCodec);
+        } else {
+            codecs.push(redCodec);
+            codecs.push(opusCodec);
+        } 
+        remoteConnections.get(selectedPeer)!.connection.getTransceivers()[0].setCodecPreferences(codecs);
+        await sendOffer(selectedPeer); 
     } catch(err) {
         console.log(err);
     }
@@ -591,23 +645,6 @@ const setupExperimentalFeatures = () => {
         $("#file-input").trigger("click");
     });
 
-    $("#playAdditionalTrack").on("click", () => {
-        if (!filePlayback.ctx || !filePlayback.buffer || !filePlayback.dest) return;
-
-        let source = filePlayback.ctx.createBufferSource();
-        source.buffer = filePlayback.buffer;
-        if (($("#checkLocalPlayback").get()[0] as HTMLInputElement).checked) {
-            source.connect(filePlayback.ctx.destination);
-        }
-        source.connect(filePlayback.dest);
-        filePlayback.currentSource = source;
-        source.start();
-    });
-    
-    $("#stopAdditionalTrack").on("click", () => {
-        filePlayback.currentSource?.stop();
-    });
-    
     $("#file-input").on("change", (_) => {
         const files = ($("#file-input")[0] as HTMLInputElement).files;
         const selectedPeer = $("#peerSelection").val() as string;
@@ -626,6 +663,23 @@ const setupExperimentalFeatures = () => {
         }
     });
 
+    $("#playAdditionalTrack").on("click", () => {
+        if (!filePlayback.ctx || !filePlayback.buffer || !filePlayback.dest) return;
+
+        let source = filePlayback.ctx.createBufferSource();
+        source.buffer = filePlayback.buffer;
+        if (($("#checkLocalPlayback").get()[0] as HTMLInputElement).checked) {
+            source.connect(filePlayback.ctx.destination);
+        }
+        source.connect(filePlayback.dest);
+        filePlayback.currentSource = source;
+        source.start();
+    });
+    
+    $("#stopAdditionalTrack").on("click", () => {
+        filePlayback.currentSource?.stop();
+    });
+    
     $("#downloadRecording").on("click", (e) => {
         const selectedPeer = $("#peerSelection").val() as string;
         const recorder = remoteConnections.get(selectedPeer)?.recorder;
@@ -633,29 +687,6 @@ const setupExperimentalFeatures = () => {
             e.preventDefault();
             alert("Cannot download file");
         }
-    });
-
-    $("#checkInbandFEC").on("click", (_) => {
-        const use = $("#checkInbandFEC").is(':checked') ? 1 : 0;
-        applyNewSessionParameters({useinbandfec: use});
-    });
-
-    $("#checkOutOfBandFEC").on("click", (e) => {
-    });
-
-    $("#checkDtx").on("click", (_) => {
-        const use = $("#checkDtx").is(':checked') ? 1 : 0;
-        applyNewSessionParameters({usedtx: use});
-    });
-
-    $("#checkMaxBitrate").on("click", (_) => {
-        const use = $("#checkMaxBitrate").is(':checked') ? 1 : 0;
-        applyNewSessionParameters({maxaveragebitrate: use ? 510000 : 32000});
-    });
-
-    $("#checkStereo").on("click", (_) => {
-        const use = $("#checkStereo").is(':checked') ? 1 : 0;
-        applyNewSessionParameters({stereo: use});
     });
 
     $("#checkAGC").attr("checked", "true");
@@ -671,6 +702,23 @@ const setupExperimentalFeatures = () => {
     $("#checkEC").attr("checked", "true");
     $("#checkEC").on("click", (_) => {
         applyAudioProcessing({echoCancellation: $("#checkEC").is(':checked')});
+    });
+
+    $("#applyParameterChanges").on("click", () => {
+        const stereo = $("#checkStereo").is(':checked') ? 1 : 0;
+        const maxbitrate510 = $("#checkMaxBitrate").is(':checked') ? 256000 : 32000;
+        const dtx = $("#checkDtx").is(':checked') ? 1 : 0;
+        const inbandFec = $("#checkInbandFEC").is(':checked') ? 1 : 0;
+        const preferedCodec = $("#checkOutOfBandFEC").is(':checked') ? "red-fec" : "opus";
+
+        const preferedPTime = Number($("input[type='radio']:checked").val());
+        applyNewSessionParameters(preferedCodec, {
+            stereo: stereo, 
+            maxaveragebitrate: maxbitrate510, 
+            usedtx: dtx, 
+            useinbandfec: inbandFec,
+            ptime: preferedPTime
+        });
     });
 
     $("#startRecording").on("click", (_) => {
@@ -700,22 +748,66 @@ const setupExperimentalFeatures = () => {
 
 };
 
-const getStats = async (conn: RTCPeerConnection, kind: "audio" | "video" ,type: RTCStatsType) => {
-    let statsOutput = "";
+const getAudioStats = async (userId: string, inboundRatesCalc: StatsRatesCalculator, outboundRatesCalc: StatsRatesCalculator) => {
+    let recvStatsOutput = "";
+    let sendStatsOutput = "";
     try {
-        const stats = await conn.getStats(null);
-  
-        stats?.forEach(report => {
-            if (report.type === type && report.kind === kind) {
-                Object.keys(report).forEach(statName => {
-                statsOutput += `<strong>${statName}:</strong> ${report[statName]}<br>\n`;
-                });
-          }
+        const conn = remoteConnections.get(userId)!.connection;
+        const internalStats = await conn.getStats();
+        internalStats.forEach((val, key) => {
+            if (val.kind != "audio") return;
+            if (val.type == "inbound-rtp") {
+                let statsReport = StatsReport.fromStatsApiReport(val);
+                inboundRatesCalc.addStatsReport(statsReport);
+            } else if (val.type == "outbound-rtp") {
+                let statsReport = StatsReport.fromStatsApiReport(val);
+                outboundRatesCalc.addStatsReport(statsReport);
+            }
         });
+        const completeInboundStats = inboundRatesCalc.currentReport.toStatsApiReport()[0];
+        const completeOutboundStats = outboundRatesCalc.currentReport.toStatsApiReport()[0];
+
+        let statistics: Statistics = {
+            inboundAudio: { 
+                Jitter: Number(completeInboundStats.jitter) * 1000,
+                JitterBufferDelay: Number(completeInboundStats["[jitterBufferDelay/jitterBufferEmittedCount_in_ms]"]),
+                FecPacketsDiscarded: Number(completeInboundStats.fecPacketsReceived),
+                FecPacktesRecv: Number(completeInboundStats.fecPacketsDiscarded),
+                HeaderBytesRate: Number(completeInboundStats["[headerBytesReceived_in_bits/s]"]),
+                TotalBytesRate: Number(completeInboundStats["[bytesReceived_in_bits/s]"]),
+                InsertedSamplesRate: Number(completeInboundStats["[insertedSamplesForDeceleration/s]"]),
+                RemovedSamplesRate: Number(completeInboundStats["[removedSamplesForAcceleration/s]"]),
+                PacketsLost: Number(completeInboundStats.packetsLost)
+            },
+            outboundAudio: {
+                HeaderBytesRate: Number(completeOutboundStats["[headerBytesSent_in_bits/s]"]),
+                PacketsSentRate: Number(completeOutboundStats["[packetsSent/s]"]) * 1000,
+                TotalBytesRate: Number(completeOutboundStats["[bytesSent_in_bits/s]"]),
+            }
+        }
+
+        remoteConnections.get(userId)!.statistics = statistics;
+
+        //@ts-ignore
+        recvStatsOutput += `<strong>Jitter</strong><br> ${statistics.inboundAudio.Jitter} ms<br>\n`;
+        recvStatsOutput += `<strong>Jitter Buffer Delay</strong><br> ${statistics.inboundAudio.JitterBufferDelay.toFixed(1)} ms<br>\n`;
+        recvStatsOutput += `<strong>Packete verloren</strong><br> ${statistics.inboundAudio.PacketsLost}<br>\n`;
+        recvStatsOutput += `<strong>Empfangene Headerbitrate</strong><br> ${statistics.inboundAudio.HeaderBytesRate.toFixed(2)} kbit/s<br>\n`;
+        recvStatsOutput += `<strong>Empfangene Bitrate</strong><br> ${statistics.inboundAudio.TotalBytesRate.toFixed(2)} kbit/s<br>\n`;
+        recvStatsOutput += `<strong>FEC Packete erhalten</strong><br> ${statistics.inboundAudio.FecPacktesRecv}<br>\n`;
+        recvStatsOutput += `<strong>FEC Packete verworfen</strong><br> ${statistics.inboundAudio.FecPacketsDiscarded}<br>\n`;
+        recvStatsOutput += `<strong>Eingefügte Samples zur Beschleunigung /s</strong><br> ${statistics.inboundAudio.InsertedSamplesRate.toFixed(1)} /s<br>\n`;
+        recvStatsOutput += `<strong>Entfernte Samples zur Entschleunigung /s</strong><br> ${statistics.inboundAudio.RemovedSamplesRate.toFixed(1)} /s<br>\n`;                
+
+        sendStatsOutput += `<strong>Packete gesendet</strong><br> ${statistics.outboundAudio.PacketsSentRate.toFixed(2)} /s<br>\n`;
+        sendStatsOutput += `<strong>Gesendete Bitrate</strong><br> ${statistics.outboundAudio.TotalBytesRate.toFixed(2)} kbit/s<br>\n`;
+        sendStatsOutput += `<strong>Gesendete Headerbitrate</strong><br> ${statistics.outboundAudio.HeaderBytesRate.toFixed(2)} kbit/s<br>\n`;
+        
     } catch(err) {
         console.log(err);
-    } 
-    $("#codecStatsText").html(statsOutput);
+    }
+    $("#recvStats").html(recvStatsOutput);
+    $("#sendStats").html(sendStatsOutput);
 };
 
 
