@@ -9,7 +9,7 @@
     <link type="text/css" rel="stylesheet" href="sidebar.css">
 </head>
 
-<body >
+<body class="bg-primary">
     <!-------------------------MODAL POPUPS WHEN OPENING WEBSITE----------------------->
     <div>
         <div id="generalModal" class="modal align-middle" tabindex="-1" role="dialog">
@@ -18,18 +18,18 @@
                     <div class="modal-body">
                         <div class="container">
                             <div class="row justify-content-center my-4">
-                                <input type="text" class="form-control user-name-input" placeholder="Your name"/>
+                                <input type="text" tabindex="1" class="form-control user-name-input" placeholder="Dein Name"/>
                             </div>
                             <div class="row justify-content-center my-4">
                                 <div class="input-group px-0">
-                                    <input type="text" class="form-control" id="roomId" placeholder="Music Rooms UUID"/>
+                                    <input type="text" class="form-control" id="roomId" placeholder="UUID des Raumes zum Beitreten"/>
                                     <div class="input-group-prepend">
-                                        <button class="btn btn-primary joinRoom" id="joinRoom">Join</span>
+                                        <button class="btn btn-primary joinRoom" id="joinRoom">Beitreten</span>
                                     </div>
                                 </div>
                             </div>
                             <div class="row justify-content-center my-4">
-                                <button class="btn btn-primary" id="createRoom" style="width: 50%;">Create new Room</button>
+                                <button class="btn btn-primary" id="createRoom" style="width: 50%;">Erstelle neuen Raum</button>
                             </div>
                         </div>
                     </div>    
@@ -42,34 +42,56 @@
                     <div class="modal-body">
                         <div class="container">
                             <div class="row justify-content-center my-4">
-                                <input type="text" autofocus class="form-control user-name-input" placeholder="Your name"/>
+                                <span id="uuidModalSpan"></span>
                             </div>
                             <div class="row justify-content-center my-4">
-                                <div class="input-group">
-                                    <div class="input-group-prepend">
-                                        <button class="btn btn-primary joinRoom" id="joinRoom">Join</span>
-                                    </div>
-                                </div>
+                                <input type="text" autofocus tabindex="1" class="form-control user-name-input" placeholder="Dein Name"/>
+                            </div>
+                            <div class="row justify-content-center my-4">
+                                <button class="btn btn-primary joinRoom" id="joinRoom">Beitreten</span>
                             </div>
                         </div>
                     </div>    
                 </div>
             </div>
         </div>
-        <div class="position-fixed top-0 end-0" aria-live="assertive" aria-atomic="true" style="z-index: 9999999;; padding: 3% 3% 0 0;">
-            <div id="connectionToast" class="toast hide text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
-              <div id="connectionToastHeader"class="toast-header text-white bg-primary">
-                <strong class="me-auto">WEBSERVER CONNECTION</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
-              </div>
-              <div id="connectionToastBody" class="toast-body">
-              </div>
+        <div class="position-fixed top-0 end-0" aria-live="assertive" aria-atomic="true" style="z-index: 9999999; padding: 3% 3% 0 0;">
+            <div id="infoToast" class="toast hide text-white bg-primary border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div id="infoToastHeader"class="toast-header text-white bg-primary">
+                    <strong class="me-auto">INFORMATION</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div id="infoToastBody" class="toast-body">
+                </div>
             </div>
         </div> 
+        <div id="musicModeParameters" class="position-fixed bottom-0 end-0 me-5 mb-5 bg-primary d-flex flex-column" style="z-index: 9999999; ">
+            
+            <div class="d-flex">
+                <strong class="col-8 text-white">FEC</strong>
+                <span id="mmFec" class="col-4 text-white"></span>
+            </div>
+            <div class="d-flex">
+                <strong class="col-8 text-white" >Stereo</strong>
+                <span id="mmStereo" class="col-4 text-white"></span>
+            </div>
+            <div class="d-flex">
+                <strong class="col-8 text-white">Frame Größe</strong>
+                <span id="mmFrame" class="col-4 text-white"></span>
+            </div>
+            <div class="d-flex">
+                <strong class="col-8 text-white">Discontinous Transmission</strong>
+                <span id="mmDtx" class="col-4 text-white"></span>
+            </div>
+            <div class="d-flex">
+                <strong class="col-8 text-white">Max. Bitrate</strong>
+                <span id="mmMaxBitrate" class="col-4 text-white"></span>
+            </div>
+        </div>
     </div>
     
 
-    <div class="wrapper overflow-hidden" style="width:100%; align-items: stretch; display: flex;">
+    <div class="wrapper invisible overflow-hidden position-relative" style="width:100%; align-items: stretch; display: flex;">
         
         <!-------------------------SIDE BAR----------------------->
         <div id="sidebar" class="active d-flex flex-column">
@@ -88,6 +110,10 @@
             </select>
             <hr>
             <div class="d-flex flex-column justify-content-center">
+                <strong class="mx-auto">Spectogram</strong>
+                <canvas id="spectogram" style="width: 100%; height: 250px;"></canvas>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
                 <strong class="mx-auto">Recording Remote Peer</strong>
                 <button id="startRecording" class="experimental btn btn-secondary mx-auto">Start</button>
                 <button id="stopRecording" class="experimental btn btn-secondary mx-auto">Stop</button>
@@ -105,6 +131,15 @@
                     <label class="form-check-label" for="checkLocalPlayback">Selber hören</label>
                 </div>
                 <input id="file-input" type="file" name="name" style="display: none;"/>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <label for="lowpassFilterRange" class="form-label">Tiefpassfilter</label>
+                <input type="range" class="form-range" id="lowpassFilterRange">
+                <input type="number" id="lowpassValue" class="form-control" placeholder="Threshold Frequenz in Hz"/>
+                <label for="highFilterRange" class="form-label">Hochpassfilter</label>
+                <input type="range" class="form-range" id="highFilterRange">
+                <input type="number" id="highpassValue" class="form-control" placeholder="Threshold Frequenz in Hz"/>
                 <hr>
             </div> 
             <div class="d-flex flex-column justify-content-center">
@@ -189,25 +224,33 @@
             <div class="row" style="height: 10vh">
                 <div class="col d-flex justify-content-center" >
                     <div class="btn-group me-1">
+                        <button id="endCallButton" type="button" class="btn btn-primary my-auto" style="background-color: rgb(182, 0, 0); height: 50px; width: 50px; background-image: url(./Public/endCall.png); background-repeat: no-repeat; background-position:center">
+                        </button>
+                    </div>
+                    <div class="btn-group ms-1 me-1">
                         <button id="micButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/microphone-mute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                         <button id="speakerButton"type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/speaker-unmute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                         <button id="screenshareButton" type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/screensharing.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                         <button id="camButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/webcam.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                     </div>
+                    <div class="btn-group ms-1 me-1">
+                        <button id="toggleSidebar" type="button" class="btn btn-warning my-auto" style="height: 50px;" >Experimental</button>
+                    </div>
                     <div class="btn-group ms-1">
-                        <button id="toggleSidebar" type="button" class="btn btn-warning my-auto" style="height: 50px;" >Toggle expermintal View</button>
+                        <button id="toggleMusicMode" type="button" class="btn btn-primary my-auto" style="height: 50px; color: black" >Musikmodus</button>
                     </div>
                 </div>
             </div>
             <div class="row" style="height: 10vh">
                 <div class="col d-flex justify-content-center">
-                    <button id="copyLink" type="button" class="btn btn-primary my-auto px-3" style="font-size: 1.5rem;">Copy Invite Link</button>
+                    <button id="copyLink" type="button" class="btn btn-primary my-auto px-3" style="font-size: 1.5rem;">Einladungslink</button>
                     <span  class="my-auto">Meeting ID: </span>
                     <span id="meetingIdSpan" class="my-auto"> </span>
                 </div>
             </div>
         </div>
-    </div>    
+    </div>
+
     
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"

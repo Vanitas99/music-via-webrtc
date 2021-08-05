@@ -3,6 +3,7 @@ import { WavRecorder } from "./Recorder";
 
 export type MuteState = "muted" | "unmuted";
 export type SharingState = "sharing" | "not-sharing";
+
 export type RemoteConnectionInfo = {
     userName: string,               // Username displayed in UI
     muteState: MuteState,           // If muted or not
@@ -11,30 +12,43 @@ export type RemoteConnectionInfo = {
     mainStream: MediaStream,        // Stream, that holds the video and microphone remote tracks
     additionalStreams: {stream: MediaStream, src?: AudioBufferSourceNode}[], // 
     recorder: WavRecorder | null,
-    socket: Socket,
     datachannel?: RTCDataChannel,
     codecConfiguration: { codec: PreferedCodec, params: OpusCodecParameters},
-    statistics: Statistics | null
+    statistics: Statistics | null,
+    musicMode: MusicModes
 };        
 
+export type InboundAudioStats = {
+    Jitter: number, 
+    JitterBufferDelay: number, 
+    PacketsLost: number,
+    PacketsReceived: number,
+    PayloadBytesRate: number, 
+    HeaderBytesRate: number,
+    FecPacktesRecv: number, 
+    FecPacketsDiscarded: number,
+    InsertedSamplesRate: number, 
+    RemovedSamplesRate: number
+};
+
+export type OutboundAudioStats = {
+    PacketsSentRate: number,
+    TotalBytesRate: number,
+    HeaderBytesRate: number
+};
+
+export type RemoteAudioStats = {
+    PacketsSent: number
+};
+
 export type Statistics = { 
-    inboundAudio: {
-        Jitter: Number, 
-        JitterBufferDelay: Number, 
-        PacketsLost: Number,
-        TotalBytesRate: Number, 
-        HeaderBytesRate: Number,
-        FecPacktesRecv: Number, 
-        FecPacketsDiscarded: Number,
-        InsertedSamplesRate: Number, 
-        RemovedSamplesRate: Number
-    }, 
-    outboundAudio: {
-        PacketsSentRate: Number,
-        TotalBytesRate: Number,
-        HeaderBytesRate: Number
-    }
+    previousSnapshot?: Statistics,
+    currentInboundAudio?: InboundAudioStats , 
+    currentOutboundAudio?: OutboundAudioStats,
+    remoteOutboundAudio?: RemoteAudioStats
 }
+
+export type MusicModes = "off" | "agressive"
 
 export type OpusCodecParameters = {
     "ptime"?: number,

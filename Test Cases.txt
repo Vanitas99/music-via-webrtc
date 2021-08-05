@@ -14,3 +14,10 @@ VISQOL Test Cases:
 5. Loss 10% RED FEC                         MOS: bis
 6. Loss 25% REF FEC                         MOS: bis
 7. Loss 50% RED FEC                         MOS: bis
+
+
+
+
+256 kbit max average - MONO HAT VOLL UND STEREO HAT HÄLFTE also 128
+
+128 kbit max average - 
