@@ -4,6 +4,7 @@ import { CustomAudioGraph } from "./AudioAnalyzer";
 import { WavRecorder } from "./Recorder";
 import {IMusicPeerConnection, 
     InboundAudioStats, 
+    MID, 
     MusicModes, 
     MuteState, 
     OfferType, 
@@ -22,7 +23,7 @@ import { ICE_SERVERS } from "./constants";
 
 
 
-export class MusicPeerConnection implements IMusicPeerConnection {
+export class MusicPeerConnection {
     amIPolite: boolean;         // Diese Variable wird genutzt, um bei einer neuen Verhandlung der Verbindung (engl. Negotiation),
                                 // z.b durch Änderung von Paramtern oder Hinzufügen neuer MediaStreamTracks (audio, video),
                                 // eventuelle Data Races zu verhindern. Falls beide Peers gleichzeitig versuchen die Verbindung neu 
@@ -39,8 +40,9 @@ export class MusicPeerConnection implements IMusicPeerConnection {
     audioRecorder?: WavRecorder | null;
     mainMediaStream: MediaStream;
     additionalMediaStreams: Array<MediaStream>;
-    preferedCodec: PreferedCodec;
-    opusConfiguration: OpusCodecParameters;
+    preferedCodecs: Map<MID,PreferedCodec>;
+    opusConfigurations: Map<MID,OpusCodecParameters>;
+    playoutDelays: Map<MID, number>;
     statistics: Statistics;
     remoteAudioGraphs: Map<string, CustomAudioGraph>;
     datachannel?: RTCDataChannel;
@@ -60,31 +62,37 @@ export class MusicPeerConnection implements IMusicPeerConnection {
 
         this.connection = new RTCPeerConnection(ICE_SERVERS);
         
-        this.remoteAudioGraphs = new Map<string, CustomAudioGraph>();
         this.mainMediaStream = new MediaStream();
         this.audioRecorder = null;
         
         this.amIPolite = !createDataChannel;
         this.muteState = "muted";
+
+        this.preferedCodecs = new Map<MID,PreferedCodec>();
+        this.opusConfigurations = new Map<MID,OpusCodecParameters>();
+        this.playoutDelays = new Map<MID, number>();
+
         /*
         Initial starten wir im Sprache Modus. D.h. Opus mit niedriger Bitrate und entsprechenden Parametern
         */
-       this.preferedCodec = "opus";
-       this.opusConfiguration = {
-           cbr: 0,
-           stereo: 0,
-           maxptime: 120,
-           usedtx: 1,
-           useinbandfec: 1,
-           maxaveragebitrate: 32000,
-           ptime: 20
-        }  
+        this.preferedCodecs.set("0", "opus");
+        this.opusConfigurations.set("0", {
+            cbr: 0,
+            stereo: 0,
+            maxptime: 120,
+            usedtx: 1,
+            useinbandfec: 1,
+            maxaveragebitrate: 32000,
+            ptime: 20
+        });
+        this.playoutDelays.set("0", 0);
         this.statistics = { previousSnapshot: {}};
         this.statsQueue = new Array<InboundAudioStats>(3);
         
         this.musicMode = "off";
         this.remoteAudioGraphs = new Map<StreamID, CustomAudioGraph>();
         this.additionalMediaStreams = new Array<MediaStream>();
+
         
         /* 
         In bestimmten Intervallen sollen die Statistiken aus der getStats() Api aktuallisiert und angezeigt werden.
@@ -94,6 +102,8 @@ export class MusicPeerConnection implements IMusicPeerConnection {
         this.inboundRatesCalc = new StatsRatesCalculator();
         this.outboundRatesCalc = new StatsRatesCalculator();
         
+        setInterval(async () => await this.getAudioStats(), 300);
+
         this.infoToast = infoToast;
         this.webserverConnection = socket;
        
@@ -134,7 +144,7 @@ export class MusicPeerConnection implements IMusicPeerConnection {
         }
         
         this.connection.ontrack = (trackEvent) => {
-            console.log("Received new Tracks from Remote Peer");
+            console.log("Received new Track from Remote Peer");
             console.log(this.connection.getTransceivers());
             if (trackEvent.track.kind == "audio") {
                 // Wenn wir bereits einen Audio Track empfangen, dann muss der neue
@@ -147,18 +157,28 @@ export class MusicPeerConnection implements IMusicPeerConnection {
                         this.mainMediaStream.id, audioGraph
                     );
                     audioGraph.startGraph();
-                    } else {
-                        trackEvent.transceiver.direction = "recvonly";
-                        let newStream = new MediaStream();
-                        newStream.addTrack(trackEvent.track);
-                        this.additionalMediaStreams.push(newStream);
-                        addAdditionalStream(this.remoteUserId, trackEvent.track);
-                    }
                 } else {
-                    this.mainMediaStream.addTrack(trackEvent.track);
+                    let newStream = new MediaStream();
+                    newStream.addTrack(trackEvent.track);
+                    this.additionalMediaStreams.push(newStream);
+                    addAdditionalStream(this.remoteUserId, trackEvent.track);
                 }
-                $(".experimental").removeAttr("disabled");
+                const newTrackListEntry = `<option value=${trackEvent.transceiver.mid}>${trackEvent.transceiver.mid}}</option>`;
+                $("#peerTrackSelection").append(newTrackListEntry);
+                this.opusConfigurations.set(trackEvent.transceiver.mid, {
+                    cbr: 0,
+                    stereo: 0,
+                    maxptime: 120,
+                    usedtx: 1,
+                    useinbandfec: 1,
+                    maxaveragebitrate: 32000,
+                    ptime: 20
+                });
+            } else {
+                this.mainMediaStream.addTrack(trackEvent.track);
             }
+            $(".experimental").removeAttr("disabled");
+        }
             
             /*
             Wenn ein neuer AudioTrack zur Remote Verbindung hinzugefügt wird, muss dies hier extra behandelt werden.
@@ -222,46 +242,55 @@ export class MusicPeerConnection implements IMusicPeerConnection {
                 } else if (remoteSdp.type == "answer") {
                     await this.connection.setRemoteDescription(remoteSdp);
                 }
-                break;
+                break;    
         }
+        console.log(this.connection.getTransceivers());
     };
 
-    setOpusCodecParameters = async (sdp: RTCSessionDescriptionInit, parameters: OpusCodecParameters) => {
+    private setOpusCodecParameters = async (sdp: RTCSessionDescriptionInit, customMsid?: string) => {
         new Promise<void>((resolve, reject) => {
-            let sdpObj = sdpUtils.parse(sdp.sdp!);
-            let opusSegment = sdpObj.media.find(mediaSegment => {
-                return mediaSegment.type == "audio";
-            });
-            if (!opusSegment) reject("No Opus Media Segment found!");
+            this.opusConfigurations.forEach((parameters, mid) => {
+                let sdpObj = sdpUtils.parse(sdp.sdp!);
+                let opusSegment = sdpObj.media.find(mediaSegment => {
+                    return mediaSegment.mid == mid;
+                });
+                if (!opusSegment) reject(`No Opus Media Segment with mid=${mid} found!`);
+        
+                if (customMsid) {
+                    opusSegment.msid = customMsid;
+                }
     
-            let fmtpIndex = -1;
-            let newFmtp = opusSegment!.fmtp.find((ftmp,i) => {
-                if (ftmp.payload === 111) {
-                    fmtpIndex = i;
-                    return true;
-                } 
-                return false;
-            });
-            console.log("Old Opus Config - " + newFmtp!.config);
-            let params = sdpUtils.parseParams(newFmtp!.config);
-            for (const [param, val] of Object.entries(parameters)) {
-                params[param] = val;
-            }
-            var config: string = "";
-            for (const [parameter, value] of Object.entries(params)) {
-                config += `${parameter}=${value};`;
-            }
-            let mungedSdp: string;
-            newFmtp!.config = config;
-            console.log("New Opus Config - " + newFmtp!.config);
-            opusSegment!.fmtp[fmtpIndex] = newFmtp!;
-            mungedSdp = sdpUtils.write(sdpObj);
-            sdp.sdp = mungedSdp;
+                // Die FMTP Zeile für opus rtp payload finden
+                let fmtpIndex = -1;
+                let newFmtp = opusSegment!.fmtp.find((ftmp,i) => {
+                    if (ftmp.payload === 111) {
+                        fmtpIndex = i;
+                        return true;
+                    } 
+                    return false;
+                });
+                 
+                console.log("Old Opus Config - " + newFmtp!.config);
+                let params = sdpUtils.parseParams(newFmtp!.config);
+                for (const [param, val] of Object.entries(parameters)) {
+                    params[param] = val;
+                }
+                var config: string = "";
+                for (const [parameter, value] of Object.entries(params)) {
+                    config += `${parameter}=${value};`;
+                }
+                let mungedSdp: string;
+                newFmtp!.config = config;
+                console.log("New Opus Config - " + newFmtp!.config);
+                opusSegment!.fmtp[fmtpIndex] = newFmtp!;
+                mungedSdp = sdpUtils.write(sdpObj);
+                sdp.sdp = mungedSdp;
+            }); 
             resolve();
-        })
+        });
     };
     
-    getAudioStats = async () => {
+    private getAudioStats = async () => {
         let recvStatsOutput = "";
         let sendStatsOutput = "";
         try {
@@ -347,12 +376,13 @@ export class MusicPeerConnection implements IMusicPeerConnection {
             sessionDescription = await this.connection.createOffer();
             // Die gewünschten Opus Parameter müssen bei jedem Offer neu in das SDP eingefügt werden, 
             // bevor das SDP lokal gesetzt wird.
-            await this.setOpusCodecParameters(sessionDescription, this.opusConfiguration);
+            await this.setOpusCodecParameters(sessionDescription);
             if (!offer && this.connection.signalingState != "stable")  {
                 console.log("Not in stable state!");
                 return;
             } 
             await this.connection.setLocalDescription(sessionDescription);
+            console.log(this.connection.getTransceivers());
         } catch (error) {
         console.error(error);
         return;
@@ -372,11 +402,13 @@ export class MusicPeerConnection implements IMusicPeerConnection {
     };
 
     sendAnswer = async () => {
+
         let sessionDescription: RTCSessionDescriptionInit;
         try {
             sessionDescription = await this.connection.createAnswer();
-            await this.setOpusCodecParameters(sessionDescription, this.opusConfiguration);
+            await this.setOpusCodecParameters(sessionDescription);
             this.connection.setLocalDescription(sessionDescription);
+            console.log(this.connection.getTransceivers());
             if (this.datachannel?.readyState == "open") {
                 this.datachannel.send(JSON.stringify({msg: "sdp", sdp: sessionDescription}));
             } else {
@@ -388,12 +420,12 @@ export class MusicPeerConnection implements IMusicPeerConnection {
         }
     };
 
-    applyNewSessionParameters = async (preferedCodec: PreferedCodec, codecParams: OpusCodecParameters) => {
+    applyNewSessionParameters = async (mid: MID, preferedCodec: PreferedCodec, codecParams: OpusCodecParameters) => {
         const opusCodec = {mimeType: "audio/opus", clockRate: 48000,channels: 2, sdpFmtpLine: "minptime=10;useinbandfec=1"};
         const redCodec = {mimeType: "audio/red", clockRate: 48000, channels: 2};
         try {
-            this.opusConfiguration = codecParams;
-            this.preferedCodec = preferedCodec;
+            this.preferedCodecs.set(mid, preferedCodec);
+            this.opusConfigurations.set(mid, codecParams);
             let codecs: RTCRtpCodecCapability[] = [];
             if (preferedCodec == "opus") {
                 codecs.push(opusCodec);
@@ -409,7 +441,7 @@ export class MusicPeerConnection implements IMusicPeerConnection {
         }
     };
 
-    adjustMediaStreams = () => {
+    private adjustMediaStreams = () => {
         if (this.connection && this.musicMode == "off") return;
 
         const prevInbound = this.statistics!.previousSnapshot?.currentInboundAudio;
@@ -439,19 +471,35 @@ export class MusicPeerConnection implements IMusicPeerConnection {
         $("#mmDtx").text(this.opusConfiguration.usedtx!.toString());
     };
 
-    addAdditionalTrack = (track: MediaStreamTrack) => {
+    public addAdditionalTrack = (track: MediaStreamTrack) => {
         let sender = this.connection.addTrack(track);
         let transceiver = this.connection.getTransceivers().find((transceiver) => {
-            transceiver.sender === sender;
-        })
+            return transceiver.sender === sender;
+        });
         //transceiver.direction = "sendonly";
         this.numberOfMediaTracksSent++;
-        this.connection.getTransceivers().forEach(t => {
-            console.log(t.mid + "-");
-        });
+        console.log(this.connection.getTransceivers());
     };
     
-    setPlayoutDelay = (delayInSec: number) => {
+    public setPlayoutDelay = (delayInSec: number) => {
+        const videoTransceiver = this.connection.getTransceivers().find(
+            (transceiver) => transceiver.mid == "1"
+        );
+        
+        //@ts-ignore
+        videoTransceiver.receiver.playoutDelayHint = delayInSec;
+        this.playoutDelays.forEach((delay, mid) => {
+            let transv = this.connection.getTransceivers().find( transceiver => {
+                return transceiver.mid == mid;
+            });
+            if (transv) {
+                //@ts-ignore
+                transv.receiver.playoutDelayHint = delay;
+            }
+        });
+    };
+
+    public getPlayoutDelay = (delayInSec: number) => {
         const opusTransceiver = this.connection.getTransceivers()[0];
         const videoTransceiver = this.connection.getTransceivers().find(
             (transceiver) => transceiver.mid == "1"
@@ -463,7 +511,7 @@ export class MusicPeerConnection implements IMusicPeerConnection {
         opusTransceiver.receiver.playoutDelayHint = delayInSec;
     };
 
-    muteAudioTracks = (localSpeakerState: MuteState) => {
+    public muteAudioTracks = (localSpeakerState: MuteState) => {
         this.mainMediaStream.getAudioTracks().forEach(track => {
             track.enabled = localSpeakerState == "unmuted";
         })

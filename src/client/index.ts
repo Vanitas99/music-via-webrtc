@@ -2,6 +2,7 @@ import { io, Socket } from "socket.io-client";
 import { Toast , Modal, Alert} from "bootstrap";
 import { WavRecorder } from "./Recorder";
 import { 
+    MID,
     MuteState, 
     SharingState, 
 } from "./types";
@@ -66,9 +67,6 @@ const setupMainUi = () => {
         webserverConnection!.emit("leave-room");
         window.location.replace( c.isDev ? c.TEST_URL : c.PROD_URL);
     });
-
-    let bMusicMode = $("#toggleMusicMode");
-   
 
     let bMic = $("#micButton");
     bMic?.on('click', (e) => {
@@ -258,9 +256,10 @@ const setupPeerConnection = ({userId, userName} : {userId: string, userName: str
             }
         ));
         element.style.backgroundColor = newMode == "off" ? c.DISABLED_COLOR : c.ENABLED_COLOR;
+        const selectedTrackMID = $("#peerTrackSelection").val() as string;
         if (newMode == "off") {
             $("#musicModeParameters").addClass("invisible");
-            peer.applyNewSessionParameters("opus", {
+            peer.applyNewSessionParameters(selectedTrackMID, "opus", {
                 useinbandfec: 1,
                 usedtx: 1,
                 stereo: 0,
@@ -270,7 +269,7 @@ const setupPeerConnection = ({userId, userName} : {userId: string, userName: str
 
         } else {
             $("#musicModeParameters").removeClass("invisible");
-            peer.applyNewSessionParameters("opus", {
+            peer.applyNewSessionParameters(selectedTrackMID, "opus", {
                 useinbandfec: 1,
                 usedtx: 0,
                 stereo: 0,
@@ -285,6 +284,8 @@ const setupPeerConnection = ({userId, userName} : {userId: string, userName: str
     $("#peerSelection").append(newPeerListEntry);
     return peer;
 };
+
+
 
 const setupGeneralModal = () => {
     const modal = $("#generalModal");
@@ -412,10 +413,9 @@ const setupExperimentalFeatures = () => {
             return receiver.track.kind == "audio";
         });
         audioReceiver.forEach(receiver => {
-            const newTrackListEntry = `<option value=${receiver.track.label}>${}</option>`;
-            //$("#peerSelection").append(newPeerListEntry);
-
-        })
+            const newTrackListEntry = `<option value=${receiver.track.label}>${receiver.track.label}}</option>`;
+            $("#peerTrackSelection").append(newTrackListEntry);
+        });
     });
 
     $('#highpassFilterRange').on('change', (_) => {
@@ -469,16 +469,33 @@ const setupExperimentalFeatures = () => {
     $("#visualizeSelection").on("change", (_) => {
         const selectedPeer = $("#peerSelection").val() as string;
         let peer = remoteConnections.get(selectedPeer)!;
-        const mode = $("#visualizeSelection").val() as string;
+        const mode = $("#visualizeSelection").val();
+        const mainMediaStream = peer.mainMediaStream;
+        const audioGraph =  peer.remoteAudioGraphs.get(mainMediaStream.id)!;
+        if (audioGraph.isVisualizerRunning()) {
+            audioGraph.stopVisualization();
+        }
+        //@ts-ignore
+        audioGraph.startVisualization(mode, 2048);
     });
 
     $("#toggleAudioVisualizer").on("click", () => {
         const selectedPeer = $("#peerSelection").val() as string;
-        remoteConnections.get(selectedPeer)!.audio;
+        let peer = remoteConnections.get(selectedPeer)!;
+        const mainMediaStream = peer.mainMediaStream;
+        const mode = $("#visualizeSelection").val();
+        const audioGraph =  peer.remoteAudioGraphs.get(mainMediaStream.id)!;
+        let running = audioGraph.isVisualizerRunning();
+        console.log(running);
+        //@ts-ignore
+        running ? audioGraph.stopVisualization() : audioGraph.startVisualization(mode, 2048);
+        ($("#toggleAudioVisualizer").get()[0] as HTMLButtonElement).style.backgroundColor = 
+            audioGraph.isVisualizerRunning() ? c.ENABLED_COLOR :  c.DISABLED_COLOR;
     });
 
     $("peerTrackSelection").on("change", () => {
-        
+        const mid = $("peerTrackSelection").val();
+        updateUiComponents(mid as MID);
     });
 
     $("#openFile").on("click", (_) => {
@@ -529,8 +546,8 @@ const setupExperimentalFeatures = () => {
         }
     });
 
-    if (RTCRtpSender.getCapabilities("audio").codecs.find(codec => codec.mimeType == "audio/red")) {
-        $("#checkOutOfBandFEC").attr("disabled");
+    if (!RTCRtpSender.getCapabilities("audio").codecs.find(codec => codec.mimeType == "audio/red")) {
+        $("#checkOutOfBandFEC").attr('disabled', 'disabled');
     }
 
     $("#checkAGC").attr("checked", "true");
@@ -548,6 +565,7 @@ const setupExperimentalFeatures = () => {
         applyAudioProcessing({echoCancellation: $("#checkEC").is(':checked')});
     });
 
+
     $("#applyParameterChanges").on("click", () => {
         const stereo = $("#checkStereo").is(':checked') ? 1 : 0;
         const maxbitrate510 = $("#checkMaxBitrate").is(':checked') ? 128000 : 64000;
@@ -557,8 +575,9 @@ const setupExperimentalFeatures = () => {
 
         const preferedPTime = Number($("input[type='radio']:checked").val());
         const selectedPeer = $("#peerSelection").val() as string;
+        const selectedTrackMID = $("#peerTrackSelection").val() as string;
 
-        remoteConnections.get(selectedPeer)!.applyNewSessionParameters(preferedCodec, {
+        remoteConnections.get(selectedPeer)!.applyNewSessionParameters(selectedTrackMID, preferedCodec, {
             stereo: stereo, 
             maxaveragebitrate: maxbitrate510, 
             usedtx: dtx, 
@@ -591,6 +610,15 @@ const setupExperimentalFeatures = () => {
         }
     });
 };
+
+const updateUiComponents = (mid: MID) => {
+    const selectedPeer = $("#peerSelection").val() as string;
+    const peer = remoteConnections.get(selectedPeer)!;
+    const codecParameters = peer.opusConfigurations.get(mid);
+    const proccesing = peer.mainMediaStream.getAudioTracks()[0].getSettings();
+    const delay = peer.set
+
+}
 
 const switchUiToCallMode = async (roomId: string, newUserId: string) => {
     try {

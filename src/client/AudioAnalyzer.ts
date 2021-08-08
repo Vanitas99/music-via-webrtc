@@ -22,7 +22,7 @@ export class CustomAudioGraph {
         this.srcNode.connect(this.lowpassFilter).connect(this.highpassFilter).connect(this.audioCtx.destination);
         this.audioCtx.resume();
         this.visualizer = null;
-        this.startVisualization("bar", 4096);
+        this.startVisualization("bars", 2048);
     }
 
     public setLowpassFilterFrequency = (freq: number) => {
@@ -41,10 +41,10 @@ export class CustomAudioGraph {
         this.audioCtx.suspend();
     };
 
-    public startVisualization = (mode: "bar" | "spectro", fftSize: number) => {
+    public startVisualization = (mode: "bars" | "spectro", fftSize: number) => {
         this.visualizer = new CustomAudioVisualizer(this.audioCtx, fftSize);
         this.highpassFilter.connect(this.visualizer.getAnalyserNode());
-        this.visualizer.startVisualization("bars");
+        this.visualizer.startVisualization(mode);
     };
 
     public stopVisualization = () => {
@@ -54,11 +54,16 @@ export class CustomAudioGraph {
         }
     };
 
+    public isVisualizerRunning = () => {
+        return this.visualizer.isRunning();
+    };
+
     public setFFTSize = (size: number = 4096) => { 
         if (this.visualizer) {
             this.visualizer.fftSize = size;
         }
     };
+
 }
 
 export class CustomAudioVisualizer {
@@ -89,6 +94,10 @@ export class CustomAudioVisualizer {
         return this.audioAnalyser;
     };
 
+    public isRunning = () => {
+        return this.running;
+    };
+
     public startVisualization = (mode: "spectro" | "bars") => {
         console.log("Base Latency for Audio Visualization Context " + this.audioCtx.baseLatency);
 
@@ -113,11 +122,8 @@ export class CustomAudioVisualizer {
     public stopVisualization = () => {
         this.running = false;
         this.drawCtx.fillStyle = 'hsl(47, 1%, 93%)';
+        this.drawCtx.clearRect(0,0,this.width, this.height);
         this.drawCtx.fillRect(0, 0, this.width, this.height);
-    }
-
-    public isRunning = () => {
-        return this.running;
     }
     
     private drawSpectogram = (data: Uint8Array) => {

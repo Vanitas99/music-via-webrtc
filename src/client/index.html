@@ -120,9 +120,22 @@
             <strong class="mx-auto">AudioTrack Auswahl</strong>
             <select id="peerTrackSelection" class="form-select">
             </select>
-            
             <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Spectogram</strong>
+                <strong class="mx-auto">Audio Track hinzufügen</strong>
+                <button id="openFile" class="experimental btn btn-primary mx-auto">Datei auswählen</button>
+                <button id="playAdditionalTrack" class="experimental btn btn-primary mx-auto">Abspielen</button>
+                <button id="stopAdditionalTrack" class="experimental btn btn-primary mx-auto">Stop</button>
+                <button id="removeTrack" class="experimental btn btn-primary mx-auto">Track entfernen</button>
+                <button id="removeTrack" class="experimental btn btn-primary mx-auto">Track entfernen</button>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkLocalPlayback">
+                    <label class="form-check-label" for="checkLocalPlayback">Selber hören</label>
+                </div>
+                <input id="file-input" type="file" name="name" style="display: none;"/>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <strong class="mx-auto">Visualisierung</strong>
                 <canvas id="audioVisualizer" style="width: 100%; height: 250px;"></canvas>
                 <button class="btn btn-primary experimental" id="toggleAudioVisualizer">Visualisieren</button>
                 <select id="visualizeSelection" class="form-select">
@@ -178,20 +191,7 @@
                 <button id="applyParameterChanges" class="mx-auto btn btn-primary"> Apply Changes</button>
                 <hr>
             </div>
-            <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Audio Track hinzufügen</strong>
-                <button id="openFile" class="experimental btn btn-primary mx-auto">Datei auswählen</button>
-                <button id="playAdditionalTrack" class="experimental btn btn-primary mx-auto">Abspielen</button>
-                <button id="stopAdditionalTrack" class="experimental btn btn-primary mx-auto">Stop</button>
-                <button id="removeTrack" class="experimental btn btn-primary mx-auto">Track entfernen</button>
-                <button id="removeTrack" class="experimental btn btn-primary mx-auto">Track entfernen</button>
-                <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkLocalPlayback">
-                    <label class="form-check-label" for="checkLocalPlayback">Selber hören</label>
-                </div>
-                <input id="file-input" type="file" name="name" style="display: none;"/>
-                <hr>
-            </div> 
+            
             <div class="d-flex flex-column justify-content-center">
                 <div class="d-flex">
                     <label for="lowpassFilterRange" class="form-label">Tiefpassfilter</label>

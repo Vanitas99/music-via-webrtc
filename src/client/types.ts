@@ -5,7 +5,7 @@ import { CustomAudioVisualizer, CustomAudioGraph } from "./AudioAnalyzer";
 export type MuteState = "muted" | "unmuted";
 export type SharingState = "sharing" | "not-sharing";
 export type StreamID = string;
-
+export type MID = string;
 export type OfferType = "initial" | "negotiation"
 
 export interface IMusicPeerConnection {
@@ -16,18 +16,19 @@ export interface IMusicPeerConnection {
     audioRecorder?: WavRecorder | null,                                 // Record audio tracks of remote peer
     mainMediaStream: MediaStream,                                       // MediaStream that holds main audio and video track
     additionalMediaStreams: Array<MediaStream>,                         // Additional remote audio tracks added by the peer
-    opusConfiguration: OpusCodecParameters,                             // Current Opus Configuration for audio transmission
+    opusConfigurations: Map<MID ,OpusCodecParameters>,                             // Current Opus Configuration for audio transmission
+    preferedCodecs: Map<MID, PreferedCodec>
     readonly statistics: Statistics,                                    // Custom Statistics for monitoring network behavior and adjusting media transmission
     remoteAudioGraphs:  Map<StreamID, CustomAudioGraph>                 // Custom Audio Processing of a given audio track
     datachannel?: RTCDataChannel,                                       // Datachannel used for direct 2e2 SDP Negotiation
 
-    setOpusCodecParameters: (sdp: RTCSessionDescription, parameters: OpusCodecParameters) => Promise<void>,
+    setOpusCodecParameters: (sdp: RTCSessionDescription, customMsid: string) => Promise<void>,
     getAudioStats: () => Promise<void>,
     adjustMediaStreams: () => void,
 
     sendOffer: (initialOffer: OfferType) => Promise<void>,
     sendAnswer: () => Promise<void>,
-    applyNewSessionParameters: (preferedCodec: PreferedCodec, codecParams: OpusCodecParameters) => Promise<void>,
+    applyNewSessionParameters: (mid: MID, preferedCodec: PreferedCodec, codecParams: OpusCodecParameters) => Promise<void>,
 }
 
 export type InboundAudioStats = {
