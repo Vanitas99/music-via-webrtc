@@ -13,3 +13,11 @@ export const CALL_BG = "";
 export const isDev = process.env.NODE_ENV == "development";
 export const PROD_URL = "https://music-via-webrtc.herokuapp.com/";
 export const TEST_URL = "http://localhost:5500";
+
+// Kostenlose Stun Server von Google. Nicht mehr als 2 nutzen.
+export const ICE_SERVERS = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ],
+}

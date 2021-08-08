@@ -1,22 +1,34 @@
 import { Socket } from "socket.io-client";
 import { WavRecorder } from "./Recorder";
+import { CustomAudioVisualizer, CustomAudioGraph } from "./AudioAnalyzer";
 
 export type MuteState = "muted" | "unmuted";
 export type SharingState = "sharing" | "not-sharing";
+export type StreamID = string;
 
-export type RemoteConnectionInfo = {
-    userName: string,               // Username displayed in UI
-    muteState: MuteState,           // If muted or not
-    callStarted: boolean,           // Needed to not send an offer twice when onnegotiationneeded is triggered after sending initial offer
-    connection: RTCPeerConnection,  // PeerConnection Obj
-    mainStream: MediaStream,        // Stream, that holds the video and microphone remote tracks
-    additionalStreams: {stream: MediaStream, src?: AudioBufferSourceNode}[], // 
-    recorder: WavRecorder | null,
-    datachannel?: RTCDataChannel,
-    codecConfiguration: { codec: PreferedCodec, params: OpusCodecParameters},
-    statistics: Statistics | null,
-    musicMode: MusicModes
-};        
+export type OfferType = "initial" | "negotiation"
+
+export interface IMusicPeerConnection {
+    readonly remoteUserId: string,                                      // User ID (Servers Socket ID)
+    readonly remoteUserName: string,                                    // User Name of remote Peer
+    connection: RTCPeerConnection,                                      // Webrtc Connection Object
+    muteState: MuteState,                                               // Mic Mute
+    audioRecorder?: WavRecorder | null,                                 // Record audio tracks of remote peer
+    mainMediaStream: MediaStream,                                       // MediaStream that holds main audio and video track
+    additionalMediaStreams: Array<MediaStream>,                         // Additional remote audio tracks added by the peer
+    opusConfiguration: OpusCodecParameters,                             // Current Opus Configuration for audio transmission
+    readonly statistics: Statistics,                                    // Custom Statistics for monitoring network behavior and adjusting media transmission
+    remoteAudioGraphs:  Map<StreamID, CustomAudioGraph>                 // Custom Audio Processing of a given audio track
+    datachannel?: RTCDataChannel,                                       // Datachannel used for direct 2e2 SDP Negotiation
+
+    setOpusCodecParameters: (sdp: RTCSessionDescription, parameters: OpusCodecParameters) => Promise<void>,
+    getAudioStats: () => Promise<void>,
+    adjustMediaStreams: () => void,
+
+    sendOffer: (initialOffer: OfferType) => Promise<void>,
+    sendAnswer: () => Promise<void>,
+    applyNewSessionParameters: (preferedCodec: PreferedCodec, codecParams: OpusCodecParameters) => Promise<void>,
+}
 
 export type InboundAudioStats = {
     Jitter: number, 

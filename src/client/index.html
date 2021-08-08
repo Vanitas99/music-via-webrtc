@@ -90,11 +90,14 @@
         </div>
     </div>
     
-
+    
     <div class="wrapper invisible overflow-hidden position-relative" style="width:100%; align-items: stretch; display: flex;">
         
         <!-------------------------SIDE BAR----------------------->
         <div id="sidebar" class="active d-flex flex-column">
+            <strong class="mx-auto">Nutzer (Peer) Auswahl</strong>
+            <select id="peerSelection" class="form-select">
+            </select>
             <div class="d-flex flex-column justify-content-center">
                 <strong class="mx-auto">RTP Audio Statistik</strong>
                 <div id="recvStats">
@@ -105,104 +108,136 @@
                 </div>
                 <hr>
             </div>
-            <strong class="mx-auto">Select the peer to test with</strong>
-            <select id="peerSelection" class="form-select">
-            </select>
             <hr>
             <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Spectogram</strong>
-                <canvas id="spectogram" style="width: 100%; height: 250px;"></canvas>
-            </div> 
-            <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Recording Remote Peer</strong>
-                <button id="startRecording" class="experimental btn btn-secondary mx-auto">Start</button>
-                <button id="stopRecording" class="experimental btn btn-secondary mx-auto">Stop</button>
+                <strong class="mx-auto">Peer Aufzeichnung</strong>
+                <button id="startRecording" class="experimental btn btn-primary mx-auto">Start</button>
+                <button id="stopRecording" class="experimental btn btn-primary mx-auto">Stop</button>
                 <a id="downloadRecording" class="experimental mx-auto" style="color: black;" href="" download="">Download</a>
-                <hr>
             </div> 
+            <hr>
+            <strong class="mx-auto">Remote Track Einstellungen</strong>
+            <strong class="mx-auto">AudioTrack Auswahl</strong>
+            <select id="peerTrackSelection" class="form-select">
+            </select>
+            
             <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Add new Track</strong>
-                <button id="openFile" class="experimental btn btn-secondary mx-auto">Open File</button>
-                <button id="playAdditionalTrack" class="experimental btn btn-secondary mx-auto">Play Track</button>
-                <button id="stopAdditionalTrack" class="experimental btn btn-secondary mx-auto">Stop Track</button>
-                <button id="removeTrack" class="experimental btn btn-secondary mx-auto">Remove Track</button>
-                <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkLocalPlayback">
-                    <label class="form-check-label" for="checkLocalPlayback">Selber hören</label>
-                </div>
-                <input id="file-input" type="file" name="name" style="display: none;"/>
-                <hr>
+                <strong class="mx-auto">Spectogram</strong>
+                <canvas id="audioVisualizer" style="width: 100%; height: 250px;"></canvas>
+                <button class="btn btn-primary experimental" id="toggleAudioVisualizer">Visualisieren</button>
+                <select id="visualizeSelection" class="form-select">
+                    <option value="spectro">Spektrogramm</option>
+                    <option value="bars">Bardiagramm</option>
+                </select>
             </div> 
+            <hr>
             <div class="d-flex flex-column justify-content-center">
-                <label for="lowpassFilterRange" class="form-label">Tiefpassfilter</label>
-                <input type="range" class="form-range" id="lowpassFilterRange">
-                <input type="number" id="lowpassValue" class="form-control" placeholder="Threshold Frequenz in Hz"/>
-                <label for="highFilterRange" class="form-label">Hochpassfilter</label>
-                <input type="range" class="form-range" id="highFilterRange">
-                <input type="number" id="highpassValue" class="form-control" placeholder="Threshold Frequenz in Hz"/>
-                <hr>
-            </div> 
-            <div class="d-flex flex-column justify-content-center">
-                <strong class="mx-auto">Switch Processing</strong>
-                <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkAGC">
-                    <label class="experimental form-check-label" for="checkAGC">Automatic Gain Control</label>
+                <label class="form-check-label" for="playoutDelay"></label>
+                <div class="d-flex">
+                    <input id="playoutDelay" type="number" min="0" max="2000" class="form-control user-name-input" placeholder="In ms"/>
+                    <span> sec</span>
                 </div>
-                <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkEC">
-                    <label class="form-check-label" for="checkEC">Echo Cancellation</label>
-                </div>
-                <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkNS">
-                    <label class="form-check-label" for="checkNS">Noise Supression</label>
-                </div>
-                <hr>
-            </div> 
-            <div class="d-flex flex-column justify-content-center">
+                
                 <strong class="mx-auto" >Change Opus Parameters</strong>
                 <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkInbandFEC">
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkInbandFEC">
                     <label class="form-check-label" for="checkInbandFEC">Opus Inband Fec</label>
                 </div>
                 <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkOutOfBandFEC">
-                    <label class="form-check-label" for="checkOutOfBandFEC">Prefer RED FEC Codec</label>
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkOutOfBandFEC">
+                    <label class="form-check-label" for="checkOutOfBandFEC">FEC mittles RED</label>
                 </div>
                 <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkDtx">
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkDtx">
                     <label class="form-check-label" for="checkDtx">Dtx</label>
                 </div>
                 <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkMaxBitrate">
-                    <label class="form-check-label" for="checkMaxBitrate">maxaveragebitrate</label>
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkMaxBitrate">
+                    <label class="form-check-label" for="checkMaxBitrate">Max. avg. Audiobitrate</label>
                 </div>
                 <div class="form-check form-switch">
-                    <input class="experimental form-check-input bg-warning" type="checkbox" id="checkStereo">
-                    <label class="form-check-label" for="checkStereo">Prefer Stereo</label>
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkStereo">
+                    <label class="form-check-label" for="checkStereo">Stereo bevorzugen</label>
                 </div>
                 <label>Audio Frame Größe in ms</label>
                 <div>
                     <div class="form-check form-check-inline">
-                        <input class="form-check-input bg-warning" name="frameSize" type="radio" id="frameSizeRadio10" value="10">
+                        <input class="form-check-input bg-primary" name="frameSize" type="radio" id="frameSizeRadio10" value="10">
                         <label class="form-check-label" for="inlineRadio1">10</label>
                     </div>
                     <div class="form-check form-check-inline">
-                        <input class="form-check-input bg-warning" name="frameSize" type="radio" id="inlineRadio2" value="20">
+                        <input class="form-check-input bg-primary" name="frameSize" type="radio" id="inlineRadio2" value="20">
                         <label class="form-check-label" for="inlineRadio2">20</label>
                     </div>
                     <div class="form-check form-check-inline">
-                        <input class="form-check-input experimental bg-warning" name="frameSize" type="radio" id="inlineRadio3" value="60">
+                        <input class="form-check-input experimental bg-primary" name="frameSize" type="radio" id="inlineRadio3" value="60">
                         <label class="form-check-label" for="inlineRadio3">60</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input experimental bg-warning" name="frameSize" type="radio" id="inlineRadio4" value="120">
-                        <label class="form-check-label" for="inlineRadio4">120</label>
                     </div>
                 </div>
                 
                 <button id="applyParameterChanges" class="mx-auto btn btn-primary"> Apply Changes</button>
                 <hr>
             </div>
+            <div class="d-flex flex-column justify-content-center">
+                <strong class="mx-auto">Audio Track hinzufügen</strong>
+                <button id="openFile" class="experimental btn btn-primary mx-auto">Datei auswählen</button>
+                <button id="playAdditionalTrack" class="experimental btn btn-primary mx-auto">Abspielen</button>
+                <button id="stopAdditionalTrack" class="experimental btn btn-primary mx-auto">Stop</button>
+                <button id="removeTrack" class="experimental btn btn-primary mx-auto">Track entfernen</button>
+                <button id="removeTrack" class="experimental btn btn-primary mx-auto">Track entfernen</button>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkLocalPlayback">
+                    <label class="form-check-label" for="checkLocalPlayback">Selber hören</label>
+                </div>
+                <input id="file-input" type="file" name="name" style="display: none;"/>
+                <hr>
+            </div> 
+            <div class="d-flex flex-column justify-content-center">
+                <div class="d-flex">
+                    <label for="lowpassFilterRange" class="form-label">Tiefpassfilter</label>
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkTiefpassFilter">
+                </div>
+                <div class="d-flex">
+                    <span>2000</span>
+                    <input type="range" class="form-range" id="lowpassFilterRange"/>
+                    <span>24000</span>
+                </div>
+                <div>
+                    <input type="number" max="2400" min="2000" id="lowpassValue" class="form-control d-inline" style="width: 40%;" placeholder="Frequenz in Hz"/>
+                    <span>Hz</span>
+                </div>
+                <div class="d-flex">
+                    <label for="highpassFilterRange" class="form-label">Hochpassfilter</label>
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkHochpassFilter">
+                </div>
+                <div class="d-flex">
+                    <span>20</span>
+                    <input type="range" class="form-range" id="highpassFilterRange">
+                    <span>1000</span>
+                </div>
+                <div >
+                    <input type="number" max="1000" min="20" id="highpassValue" class="form-control d-inline" style="width: 40%;" placeholder="Frequenz in Hz"/>
+                    <span>Hz</span>
+                </div>
+                <hr>
+            </div> 
+            <strong class="mx-auto">Eigenen Audio Track anpassen</strong>
+            <div class="d-flex flex-column justify-content-center">
+                <strong class="mx-auto"></strong>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkAGC">
+                    <label class="experimental form-check-label" for="checkAGC">Automatic Gain Control</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkEC">
+                    <label class="form-check-label" for="checkEC">Echo Cancellation</label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="experimental form-check-input bg-primary" type="checkbox" id="checkNS">
+                    <label class="form-check-label" for="checkNS">Noise Supression</label>
+                </div>
+                <hr>
+            </div> 
         </div>    
 
         <!-------------------------MAIN PAGE----------------------->
@@ -230,14 +265,10 @@
                     <div class="btn-group ms-1 me-1">
                         <button id="micButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/microphone-mute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                         <button id="speakerButton"type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/speaker-unmute.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
-                        <button id="screenshareButton" type="button" class="btn btn-primary my-auto" style="height: 50px; width: 50px; background-image: url(./Public/screensharing.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                         <button id="camButton" type="button" class="btn btn-primary my-auto" style=" height: 50px; width: 50px; background-image: url(./Public/webcam.svg); background-size: 50% 50%; background-repeat: no-repeat; background-position:center"></button>
                     </div>
                     <div class="btn-group ms-1 me-1">
                         <button id="toggleSidebar" type="button" class="btn btn-warning my-auto" style="height: 50px;" >Experimental</button>
-                    </div>
-                    <div class="btn-group ms-1">
-                        <button id="toggleMusicMode" type="button" class="btn btn-primary my-auto" style="height: 50px; color: black" >Musikmodus</button>
                     </div>
                 </div>
             </div>
