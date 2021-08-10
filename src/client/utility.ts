@@ -51,13 +51,12 @@ export const showInfoMessage = (infoToast: Toast | null,state: "success" | "erro
     infoToast.show();
 };
 
-export const addAdditionalStream = (userId: string, track: MediaStreamTrack) => {
-    let stream = new MediaStream();
-    stream.addTrack(track);
+export const addAdditionalStream = (userId: string, stream: MediaStream) => {
 
     let audioElement = new Audio();
     audioElement.id = "additional" + userId;
     audioElement.srcObject = stream;
+    audioElement.muted = true;
     audioElement.play();
 
     $("#audioContainer").append(audioElement);

@@ -2,7 +2,8 @@ import { Toast } from "bootstrap";
 import { Socket } from "socket.io-client";
 import { CustomAudioGraph } from "./AudioAnalyzer";
 import { WavRecorder } from "./Recorder";
-import {IMusicPeerConnection, 
+import {
+    DataChannelMsgType,
     InboundAudioStats, 
     MID, 
     MusicModes, 
@@ -13,17 +14,21 @@ import {IMusicPeerConnection,
     PreferedCodec, 
     RemoteAudioStats, 
     Statistics, 
-    StreamID
+    TrackID
 } from "./types"
-import { addAdditionalStream, showInfoMessage } from "./utility";
+import { showInfoMessage } from "./utility";
 import * as sdpUtils from "sdp-transform"
 import {StatsRatesCalculator, StatsReport} from "./RateCalculator"
 import { ICE_SERVERS } from "./constants";
+import { stringify } from "uuid";
 
 
 
 
 export class MusicPeerConnection {
+    trackNameToAdd: string;
+    amICurrentlyAddingATrack: boolean = false;
+
     amIPolite: boolean;         // Diese Variable wird genutzt, um bei einer neuen Verhandlung der Verbindung (engl. Negotiation),
                                 // z.b durch Änderung von Paramtern oder Hinzufügen neuer MediaStreamTracks (audio, video),
                                 // eventuelle Data Races zu verhindern. Falls beide Peers gleichzeitig versuchen die Verbindung neu 
@@ -33,26 +38,48 @@ export class MusicPeerConnection {
     callHasStarted: boolean = false;
     numberOfMediaTracksSent: number = 0;
 
+    // Remote User Information
     remoteUserId: string;
     remoteUserName: string;
-    connection: RTCPeerConnection;
     muteState: MuteState;
-    audioRecorder?: WavRecorder | null;
     mainMediaStream: MediaStream;
     additionalMediaStreams: Array<MediaStream>;
-    preferedCodecs: Map<MID,PreferedCodec>;
-    opusConfigurations: Map<MID,OpusCodecParameters>;
-    playoutDelays: Map<MID, number>;
-    statistics: Statistics;
-    remoteAudioGraphs: Map<string, CustomAudioGraph>;
-    datachannel?: RTCDataChannel;
-    musicMode: MusicModes;
 
+    // Peer Verbindung
+    connection: RTCPeerConnection;
+    audioRecorder?: WavRecorder | null;
+    datachannel?: RTCDataChannel;
+    
+    // Media Informationen zu jedem empfangenen Audiostream
+    remoteMediaStreams: Map<MID, {
+        cname?: string,
+        audioGraph: CustomAudioGraph,
+        preferecCodec: PreferedCodec,
+        opusParams: OpusCodecParameters,
+        playoutDelay: number,
+        musicMode: MusicModes,
+    }>;
+
+    // Media Informationen zu jedem gesendeten Audiostream
+    sendingMediaStreams: Map<TrackID, {
+        cname?: string,
+        mid?: MID,
+        filePlaybackInfo?: {
+            buffer: AudioBuffer | null,
+            dest: MediaStreamAudioDestinationNode | null,
+            currentSource: AudioBufferSourceNode | null,
+            ctx: AudioContext;
+        }
+    }>;
+    
+    // Statistics
     inboundRatesCalc: StatsRatesCalculator;
     outboundRatesCalc: StatsRatesCalculator;
+    statistics: Statistics;
     statsQueue: Array<InboundAudioStats>;
     statsCounter = 0;
 
+    // external
     infoToast: Toast | null;
     webserverConnection: Socket
 
@@ -68,40 +95,58 @@ export class MusicPeerConnection {
         this.amIPolite = !createDataChannel;
         this.muteState = "muted";
 
-        this.preferedCodecs = new Map<MID,PreferedCodec>();
-        this.opusConfigurations = new Map<MID,OpusCodecParameters>();
-        this.playoutDelays = new Map<MID, number>();
+        this.sendingMediaStreams = new Map<TrackID, {
+            cname?: string,
+            mid?: MID
+        }>();
+
+        this.remoteMediaStreams = new Map<MID, {
+            audioGraph: CustomAudioGraph | null,
+            preferecCodec: PreferedCodec,
+            opusParams: OpusCodecParameters,
+            playoutDelay: number,
+            musicMode: MusicModes,
+        }>();
 
         /*
         Initial starten wir im Sprache Modus. D.h. Opus mit niedriger Bitrate und entsprechenden Parametern
         */
-        this.preferedCodecs.set("0", "opus");
-        this.opusConfigurations.set("0", {
-            cbr: 0,
-            stereo: 0,
-            maxptime: 120,
-            usedtx: 1,
-            useinbandfec: 1,
-            maxaveragebitrate: 32000,
-            ptime: 20
+        this.remoteMediaStreams.set("0", {
+            musicMode: "off",
+            audioGraph: null,
+            opusParams: {
+                cbr: 0,
+                stereo: 0,
+                maxptime: 120,
+                usedtx: 1,
+                useinbandfec: 1,
+                maxaveragebitrate: 32000,
+                ptime: 20
+            }, 
+            playoutDelay: 0,
+            preferecCodec: "opus"
         });
-        this.playoutDelays.set("0", 0);
         this.statistics = { previousSnapshot: {}};
         this.statsQueue = new Array<InboundAudioStats>(3);
         
-        this.musicMode = "off";
-        this.remoteAudioGraphs = new Map<StreamID, CustomAudioGraph>();
         this.additionalMediaStreams = new Array<MediaStream>();
 
         
         /* 
-        In bestimmten Intervallen sollen die Statistiken aus der getStats() Api aktuallisiert und angezeigt werden.
-        Um die absoluten Werte in Raten umzuwandeln wird eine modifierte Version des stats_rates_calculator.js aus den webrtc-internals 
-        genutzt. Hierbei interessieren uns primär Werte für den eingehenden und ausgehenden Audio RTP Stream
+            In bestimmten Intervallen sollen die Statistiken aus der getStats() Api aktuallisiert und angezeigt werden.
+            Um die absoluten Werte in Raten umzuwandeln wird eine modifierte Version des stats_rates_calculator.js aus den webrtc-internals 
+            genutzt. Hierbei interessieren uns primär Werte für den eingehenden und ausgehenden Audio RTP Stream
         */
         this.inboundRatesCalc = new StatsRatesCalculator();
         this.outboundRatesCalc = new StatsRatesCalculator();
         
+        /* 
+            Aller 300ms wollen wir unsere Statistiken abfragen. Die Zeit kann variiert werden,
+            je nach dem wie der Algorithmus zur Bandbreitenkontrolle implementiert wird. 
+            Z.b: Ein großes Intervall kann bedeuten, dass die Zeit bis zur versuchten Anpassung
+            der MediaTrack Qualiäten größer ausfällt und man dadurch länger Einbuße in der Klangqualität
+            hat.
+        */
         setInterval(async () => await this.getAudioStats(), 300);
 
         this.infoToast = infoToast;
@@ -112,6 +157,7 @@ export class MusicPeerConnection {
             this.numberOfMediaTracksSent++;
         });
 
+        // Initialen Codec setzen. Wir starten mit reinem Opus ohne externes FEC.
         if (RTCRtpSender.getCapabilities("audio").codecs.find(codec => codec.mimeType == "audio/red")) {
             console.log("Found RED Codec");
             this.connection.getTransceivers()[0].setCodecPreferences([
@@ -125,16 +171,8 @@ export class MusicPeerConnection {
             console.log("No RED Codec found");
         };
 
-        // Initialen Codec setzen. Wir starten mit reinem Opus ohne externes FEC.
-
-        /* Experimentelle API um den RTP Agent auf eine gewünschte Verzögerung zwischen 
-            * Eintritt und Austritt von Audio Frames im JitterBuffer hinzuweisen
-        */
-        //@ts-ignore
-        this.connection.getTransceivers()[0].receiver.playoutDelayHint = 0;
-
         if (createDataChannel) {
-            this.datachannel = this.connection.createDataChannel("Data Channel");
+            this.datachannel = this.connection.createDataChannel("Data Channel", {ordered: true});
             this.datachannel!.onmessage = this.onDataChannelMsg;
         } else {
             this.connection.ondatachannel = (e) => {
@@ -143,49 +181,14 @@ export class MusicPeerConnection {
             };
         }
         
-        this.connection.ontrack = (trackEvent) => {
-            console.log("Received new Track from Remote Peer");
-            console.log(this.connection.getTransceivers());
-            if (trackEvent.track.kind == "audio") {
-                // Wenn wir bereits einen Audio Track empfangen, dann muss der neue
-                // als zusätzlicher Track registriert und in einem neuen MediaStream Objekt 
-                // abgespielt werden. In MediaStreams ist immer nur ein AudioTrack hörbar!
-                if (!this.mainMediaStream.getAudioTracks().length) {
-                    this.mainMediaStream.addTrack(trackEvent.track);
-                    let audioGraph = new CustomAudioGraph(this.mainMediaStream);
-                    this.remoteAudioGraphs.set(
-                        this.mainMediaStream.id, audioGraph
-                    );
-                    audioGraph.startGraph();
-                } else {
-                    let newStream = new MediaStream();
-                    newStream.addTrack(trackEvent.track);
-                    this.additionalMediaStreams.push(newStream);
-                    addAdditionalStream(this.remoteUserId, trackEvent.track);
-                }
-                const newTrackListEntry = `<option value=${trackEvent.transceiver.mid}>${trackEvent.transceiver.mid}}</option>`;
-                $("#peerTrackSelection").append(newTrackListEntry);
-                this.opusConfigurations.set(trackEvent.transceiver.mid, {
-                    cbr: 0,
-                    stereo: 0,
-                    maxptime: 120,
-                    usedtx: 1,
-                    useinbandfec: 1,
-                    maxaveragebitrate: 32000,
-                    ptime: 20
-                });
-            } else {
-                this.mainMediaStream.addTrack(trackEvent.track);
-            }
-            $(".experimental").removeAttr("disabled");
-        }
-            
-            /*
-            Wenn ein neuer AudioTrack zur Remote Verbindung hinzugefügt wird, muss dies hier extra behandelt werden.
-            */
-           this.connection.onnegotiationneeded = async (e) => {
-               console.log("Negotiation is needed! " + this.connection.signalingState.toString());
-               if (this.connection.signalingState != "stable" || !this.callHasStarted) return;
+        this.connection.ontrack = this.onWebrtTrack;
+
+        /*
+        Wenn ein neuer AudioTrack zur Remote Verbindung hinzugefügt wird, muss dies hier extra behandelt werden.
+        */
+        this.connection.onnegotiationneeded = async (e) => {
+            console.log("Negotiation is needed! " + this.connection.signalingState.toString());
+            if (this.connection.signalingState != "stable" || !this.callHasStarted) return;
             try {
                 await this.sendOffer("negotiation");
             } catch (err) {
@@ -200,16 +203,94 @@ export class MusicPeerConnection {
         }
     };
     
+    private onWebrtTrack = (trackEvent: RTCTrackEvent) => {
+        console.log("Received new Track from Remote Peer");
+        console.log(trackEvent.transceiver);
+        if (trackEvent.track.kind == "audio") {
+            // Wenn wir bereits einen Audio Track empfangen, dann muss der neue
+            // als zusätzlicher Track registriert und in einem neuen MediaStream Objekt 
+            // abgespielt werden. In MediaStreams ist immer nur ein AudioTrack hörbar!
+            if (!this.mainMediaStream.getAudioTracks().length) {
+                this.mainMediaStream.addTrack(trackEvent.track);
+                let audioGraph = new CustomAudioGraph(this.mainMediaStream);
+                this.remoteMediaStreams.set(
+                    trackEvent.transceiver.mid, {
+                        audioGraph: audioGraph,
+                        musicMode: "off",
+                        opusParams: {
+                            cbr: 0,
+                            stereo: 0,
+                            maxptime: 120,
+                            usedtx: 1,
+                            useinbandfec: 1,
+                            maxaveragebitrate: 32000,
+                            ptime: 20
+                        },
+                        playoutDelay: 0,
+                        preferecCodec: "opus"
+                    }
+                    );
+                    audioGraph.startGraph();
+                } else {
+                    let newStream = new MediaStream();
+                    newStream.addTrack(trackEvent.track);
+                    this.additionalMediaStreams.push(newStream);
+                    let audioGraph = new CustomAudioGraph(newStream);
+                    this.remoteMediaStreams.set(
+                        trackEvent.transceiver.mid, {
+                            audioGraph: audioGraph,
+                            musicMode: "off",
+                            opusParams: {
+                                cbr: 0,
+                                stereo: 0,
+                                maxptime: 120,
+                                usedtx: 1,
+                                useinbandfec: 1,
+                                maxaveragebitrate: 32000,
+                            ptime: 20
+                        },
+                        playoutDelay: 0,
+                        preferecCodec: "opus"
+                    });
+                    audioGraph.startGraph();
+                    const msg: DataChannelMsgType = "requestTrackName";
+                    this.datachannel!.send(JSON.stringify({msg: msg, mid: trackEvent.transceiver.mid}));
+                }
+                const mid = trackEvent.transceiver.mid;
+                const newTrackListEntry = `<option value=${trackEvent.transceiver.mid}>${mid == "0" ? "Haupttrack (Mikrofon)" : ""}</option>`;
+                $("#peerTrackSelection").append(newTrackListEntry);
+            } else {
+            /*
+                Da wir nur ein Video Stream empfangen wollen vom einem Nutzer, platzieren wir den Video Track
+                direkt im MediaStream, der auch das Microphone enthält. 
+            */
+            this.mainMediaStream.addTrack(trackEvent.track);        
+        }
+        $(".experimental").removeAttr("disabled");
+    };
+
     private onDataChannelMsg = async ({data}: MessageEvent) => {
         const msg = JSON.parse(data);
-        switch (msg.msg) {
+        const datachannelmsg: DataChannelMsgType = msg.msg;
+        const mid = msg.mid;
+        switch (datachannelmsg) {
+            case "requestTrackName":
+                const newMsg: DataChannelMsgType = "sendTrackName";
+                this.datachannel!.send(JSON.stringify({msg: newMsg, mid: msg.mid,  cname: this.trackNameToAdd}));
+                this.amICurrentlyAddingATrack = false;
+                break;
+            case "sendTrackName":
+                const cname = msg.cname;
+                $(`#peerTrackSelection option[value=${msg.mid}]`).text(cname);
+                showInfoMessage(this.infoToast, "info", 5000, `Nutzer ${this.remoteUserName} sendet einen neuen AudioTrack\nName: ${cname}`);
+                break;
             case "music-start":
-                console.log(`[VIA Data Channel] Remote Peer ${this.remoteUserId} wants to listen in Music Mode!`);
-                showInfoMessage(this.infoToast, "info", 3000, `Nutzer ${this.remoteUserName} möchte Music hören!`);
+                console.log(`[VIA Data Channel] Remote Peer ${this.remoteUserId} wants to listen to Music on Track ${msg.mid}!`);
+                showInfoMessage(this.infoToast, "info", 5000, `TRACK: ${msg.mid}\nNutzer ${this.remoteUserName} möchte Music hören!`);
                 break;
             case "music-stop":
-                console.log(`[VIA Data Channel] Remote Peer ${this.remoteUserId} wants to stop listening in Music Mode!`);
-                showInfoMessage(this.infoToast, "info", 3000, `Nutzer ${this.remoteUserName} möchte keine Music mehr hören!`);
+                console.log(`[VIA Data Channel] Remote Peer ${this.remoteUserId} wants to stop listening to Music on Track ${msg.mid}`);
+                showInfoMessage(this.infoToast, "info", 5000, `TRACK: ${msg.mid}\nNutzer ${this.remoteUserName} möchte keine Music mehr hören!`);
                 break;
             case "sdp": 
                 const remoteSdp = msg.sdp;
@@ -249,7 +330,7 @@ export class MusicPeerConnection {
 
     private setOpusCodecParameters = async (sdp: RTCSessionDescriptionInit, customMsid?: string) => {
         new Promise<void>((resolve, reject) => {
-            this.opusConfigurations.forEach((parameters, mid) => {
+            this.remoteMediaStreams.forEach((info, mid) => {
                 let sdpObj = sdpUtils.parse(sdp.sdp!);
                 let opusSegment = sdpObj.media.find(mediaSegment => {
                     return mediaSegment.mid == mid;
@@ -272,7 +353,7 @@ export class MusicPeerConnection {
                  
                 console.log("Old Opus Config - " + newFmtp!.config);
                 let params = sdpUtils.parseParams(newFmtp!.config);
-                for (const [param, val] of Object.entries(parameters)) {
+                for (const [param, val] of Object.entries(info.opusParams)) {
                     params[param] = val;
                 }
                 var config: string = "";
@@ -338,13 +419,16 @@ export class MusicPeerConnection {
             
             if ((++this.statsCounter % 3) == 0) {
                 console.log("Adjusting MediaStreams if needed!");
-                const stat1 = this.statsQueue.unshift();
-                const stat2 = this.statsQueue.unshift();
-                const stat3 = this.statsQueue.unshift();
+                const stat1 = this.statsQueue.shift();
+                const stat2 = this.statsQueue.shift();
+                const stat3 = this.statsQueue.shift();
             }
+
+            console.log(this.statsCounter);
             this.statistics!.currentInboundAudio = currentInboundAudio;
             this.statistics!.currentOutboundAudio = currentOutboundAudio;
             this.statistics!.remoteOutboundAudio = remoteOutboundAudio;
+            
             
             //@ts-ignore
             recvStatsOutput += `<strong>Jitter</strong><br> ${currentInboundAudio.Jitter} ms<br>\n`;
@@ -365,10 +449,14 @@ export class MusicPeerConnection {
             console.log(err);
         }
 
-
         $("#recvStats").html(recvStatsOutput);
         $("#sendStats").html(sendStatsOutput);
     };
+
+
+    toggleMusicMode = (mid: MID) => {
+
+    }
 
     sendOffer = async (offer: OfferType) => {
         let sessionDescription: RTCSessionDescriptionInit;
@@ -424,8 +512,8 @@ export class MusicPeerConnection {
         const opusCodec = {mimeType: "audio/opus", clockRate: 48000,channels: 2, sdpFmtpLine: "minptime=10;useinbandfec=1"};
         const redCodec = {mimeType: "audio/red", clockRate: 48000, channels: 2};
         try {
-            this.preferedCodecs.set(mid, preferedCodec);
-            this.opusConfigurations.set(mid, codecParams);
+            this.remoteMediaStreams.get(mid)!.preferecCodec = preferedCodec;
+            this.remoteMediaStreams.get(mid)!.opusParams = codecParams;
             let codecs: RTCRtpCodecCapability[] = [];
             if (preferedCodec == "opus") {
                 codecs.push(opusCodec);
@@ -463,38 +551,37 @@ export class MusicPeerConnection {
         }
         this.statistics!.previousSnapshot!.currentInboundAudio = currInbound;
         this.statistics!.previousSnapshot!.remoteOutboundAudio = currRemoteOutbound;
-
-        $("#mmFec").text(this.opusConfiguration.useinbandfec! ? "Opus Inband" : "RED");
-        $("#mmStereo").text(this.opusConfiguration.stereo!.toString());
-        $("#mmFrame").text(this.opusConfiguration.ptime!.toString());
-        $("#mmMaxBitrate").text(this.opusConfiguration.maxaveragebitrate!.toString());
-        $("#mmDtx").text(this.opusConfiguration.usedtx!.toString());
     };
 
-    public addAdditionalTrack = (track: MediaStreamTrack) => {
-        let sender = this.connection.addTrack(track);
-        let transceiver = this.connection.getTransceivers().find((transceiver) => {
-            return transceiver.sender === sender;
-        });
-        //transceiver.direction = "sendonly";
+    public addAdditionalTrack = (track: MediaStreamTrack, cname?: string) => {
+        this.amICurrentlyAddingATrack = true;
+        this.trackNameToAdd = cname;
+        const sender = this.connection.addTrack(track);
+        this.sendingMediaStreams.set(track.id, {cname: cname});
+        const newSendingTrackHTML = `<option value=${track.id}>${cname}</option>`;
+        $("#sendingTrackSelection").append(newSendingTrackHTML);
         this.numberOfMediaTracksSent++;
-        console.log(this.connection.getTransceivers());
     };
     
     public setPlayoutDelay = (delayInSec: number) => {
+        // Damit das Video synchron bleibt muss auch hier der Playout Delay gesetzt werden.
+        // Der Video Track ist in der SDP Media Description mit der MID = 1 beschrieben.
         const videoTransceiver = this.connection.getTransceivers().find(
             (transceiver) => transceiver.mid == "1"
         );
         
         //@ts-ignore
         videoTransceiver.receiver.playoutDelayHint = delayInSec;
-        this.playoutDelays.forEach((delay, mid) => {
+        this.remoteMediaStreams.forEach((_, mid) => {
+            console.log(mid);
             let transv = this.connection.getTransceivers().find( transceiver => {
                 return transceiver.mid == mid;
             });
             if (transv) {
+                console.log("Setting delay " + delayInSec + " for MID: " + mid);
                 //@ts-ignore
-                transv.receiver.playoutDelayHint = delay;
+                transv.receiver.playoutDelayHint = delayInSec;
+                this.remoteMediaStreams.get(mid)!.playoutDelay = delayInSec;
             }
         });
     };

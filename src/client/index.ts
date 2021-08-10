@@ -26,17 +26,11 @@ let localSpeakerState: MuteState = "unmuted";
 let localCamSate: SharingState = "not-sharing";
 
 let entryModal: Modal;
+let addTrackModal: Modal;
 let roomIdToJoin: string;
 
 let localStream: MediaStream;
 let remoteConnections: Map<string, MusicPeerConnection> = new Map();
-
-let filePlayback : {
-    buffer: AudioBuffer | null,
-    dest: MediaStreamAudioDestinationNode | null,
-    currentSource: AudioBufferSourceNode | null,
-    ctx: AudioContext;
-} = {buffer: null, dest: null, currentSource: null, ctx: new window.AudioContext()};
 
 
 // Diese Variable wird genutzt, um bei einer neuen Verhandlung der Verbindung (engl. Negotiation),
@@ -167,9 +161,6 @@ const setLocalStream = async (audio: boolean, {width, height}: {width: number, h
         localStream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation:true, noiseSuppression: true, autoGainControl: true}, video: {width: width, height: height}});
         localStream.getAudioTracks()[0].enabled = audioEnabled;
         localStream.getVideoTracks()[0].enabled = videoEnabled;
-        localStream.onaddtrack = (e) => {
-            console.log(e.track);
-        };
         (document.querySelector('#localVideo') as HTMLVideoElement).srcObject = localStream;
     } catch(err ) {
         console.log(err);
@@ -238,54 +229,17 @@ const setupPeerConnection = ({userId, userName} : {userId: string, userName: str
         `<video autoplay muted playsinline style="margin: auto; height: 100%; width: 100%;"></video>` + 
         `<img id="remoteMuteIcon-${userId}" src="../Public/microphone-mute.svg" style=" width: 5%; height: 5%; "></img>`+
         `<span style="font-size: 1.25em; background-color: #0d6efd; color: white; position: absolute; bottom: 0; left: 0; padding: 0.2em">${userName}</span>` +
-        `<div class="btn-group ms-1" style="position: absolute; bottom: 0; right: 0;">
-            <button id="musicMode-${userId}" type="button" class="btn btn-primary my-auto" style="height: 50px; color: black" >Musikmodus</button>
-        </div>` +
     `</div>`;
     $("#videoContainer").append(newVidHtml);
     ($(`#remoteVideo-${userId}`).find("video")[0] as HTMLMediaElement).srcObject = peer.mainMediaStream;
 
-    $(`#musicMode-${userId}`).on("click", (e) => {
-        const element = e.target;
-        const peer = remoteConnections.get(userId)!;
-        const newMode = peer.musicMode == "off" ? "agressive" : "off";
-        peer.musicMode = newMode;
-        peer.datachannel!.send(JSON.stringify(
-            {
-                msg: newMode == "off" ? "music-stop" : "music-start"
-            }
-        ));
-        element.style.backgroundColor = newMode == "off" ? c.DISABLED_COLOR : c.ENABLED_COLOR;
-        const selectedTrackMID = $("#peerTrackSelection").val() as string;
-        if (newMode == "off") {
-            $("#musicModeParameters").addClass("invisible");
-            peer.applyNewSessionParameters(selectedTrackMID, "opus", {
-                useinbandfec: 1,
-                usedtx: 1,
-                stereo: 0,
-                ptime: 20,
-                maxaveragebitrate: 32000
-            });
-
-        } else {
-            $("#musicModeParameters").removeClass("invisible");
-            peer.applyNewSessionParameters(selectedTrackMID, "opus", {
-                useinbandfec: 1,
-                usedtx: 0,
-                stereo: 0,
-                ptime: 10,
-                maxaveragebitrate: 256000
-            });
-        }
-    });
+    
     $(`#musicMode-${userId}`).css("backgroundColor", c.DISABLED_COLOR);
     
     const newPeerListEntry = `<option value=${userId}>${userName}</option>`;
     $("#peerSelection").append(newPeerListEntry);
     return peer;
 };
-
-
 
 const setupGeneralModal = () => {
     const modal = $("#generalModal");
@@ -405,7 +359,15 @@ EXPERIMENTAL FEATURES FOR INVESTIGATING AUDIO QUALITY
 */
 
 const setupExperimentalFeatures = () => {
+
+    const addTrackModalElement = $("#addTrackModal");
+    addTrackModal = new Modal(addTrackModalElement![0], { "backdrop": "static", "keyboard": false });
+    addTrackModal.hide();
     
+    $("#openAddTrackModal").on("click", () => {
+        addTrackModal.show();
+    });
+
     $("#peerSelection").on("change", () => {
         const selectedPeer = $("#peerSelection").val() as string;
         $("#peerTrackSelection option").remove();
@@ -417,46 +379,66 @@ const setupExperimentalFeatures = () => {
             $("#peerTrackSelection").append(newTrackListEntry);
         });
     });
-
-    $('#highpassFilterRange').on('change', (_) => {
-        const freq = logarithmicSliderPosToHz($('#lowpassFilterRange').val() as number, 1, 1000);
-        console.log(freq);
+    
+    $('#gainRange').on('change', (_) => {
+        const gain = $("#gainRange").val() as number;
+        console.log(gain);
         const selectedPeer = $("#peerSelection").val() as string;
-        const stream = remoteConnections.get(selectedPeer)!.mainMediaStream;
-        remoteConnections.get(selectedPeer)!.remoteAudioGraphs.get(stream.id)?.setHighpassFilterFrequency(freq);
+        const peer = remoteConnections.get(selectedPeer)!;
+        const mid = $("#peerTrackSelection").val() as MID;
+        const audioGraph = peer.remoteMediaStreams.get(mid)!.audioGraph;
+        audioGraph.setGain(gain);
     });
     
+    
+    $('#highpassFilterRange').on('change', (_) => {
+        const freq = logarithmicSliderPosToHz($('#lowpassFilterRange').val() as number, 20, 20000);
+        console.log(freq);
+        const selectedPeer = $("#peerSelection").val() as string;
+        const peer = remoteConnections.get(selectedPeer)!;
+        const mid = $("#peerTrackSelection").val() as MID;
+        const audioGraph = peer.remoteMediaStreams.get(mid)!.audioGraph;
+        audioGraph.setHighpassFilterFrequency(freq as number);
+    });
+
     $('#highpassFilterRange').on('input', (_) => {
-        const freq = logarithmicSliderPosToHz($('#highpassFilterRange').val() as number, 20, 1000);
+        const freq = logarithmicSliderPosToHz($('#highpassFilterRange').val() as number, 20, 20000);
         $('#highpassValue').val(freq.toFixed());
     });
 
     $("#highpassValue").on("change", (e) => {
         const freq = $("#highpassValue").val();
         $("#highpassValue").val(freq as string);
-        $('#highpassFilterRange').val(logarithmicHzToSliderPos($("#highpassValue").val() as number, 20,1000));
+        $('#highpassFilterRange').val(logarithmicHzToSliderPos($("#highpassValue").val() as number, 20,20000));
         const selectedPeer = $("#peerSelection").val() as string;
-        const stream = remoteConnections.get(selectedPeer)!.mainMediaStream;
-        remoteConnections.get(selectedPeer)!.remoteAudioGraphs.get(stream.id)?.setHighpassFilterFrequency(freq as number);
+        const mid = $("#peerTrackSelection").val() as MID;
+        const peer = remoteConnections.get(selectedPeer)!;
+        const audioGraph = peer.remoteMediaStreams.get(mid)!.audioGraph;
+        audioGraph.setHighpassFilterFrequency(freq as number);
     });
 
     $('#lowpassFilterRange').on('change', (_) => {
-        const val = logarithmicSliderPosToHz($('#lowpassFilterRange').val() as number, 2000, 24000);
-        console.log(val);
+        const freq = logarithmicSliderPosToHz($('#lowpassFilterRange').val() as number, 20, 20000);
+        const selectedPeer = $("#peerSelection").val() as string;
+        const mid = $("#peerTrackSelection").val() as MID;
+        const peer = remoteConnections.get(selectedPeer)!;
+        const audioGraph = peer.remoteMediaStreams.get(mid)!.audioGraph;
+        audioGraph.setHighpassFilterFrequency(freq as number);
     });
     
     $('#lowpassFilterRange').on('input', (_) => {
-        const freq = logarithmicSliderPosToHz($('#lowpassFilterRange').val() as number, 2000 , 24000);
+        const freq = logarithmicSliderPosToHz($('#lowpassFilterRange').val() as number, 20 , 20000);
         $('#lowpassValue').val(freq.toFixed(0));
     });
 
     $("#lowpassValue").on("change", (e) => {
         const freq = $("#lowpassValue").val()
         $("#lowpassValue").val(freq as string);
-        $('#lowpassFilterRange').val(logarithmicHzToSliderPos($("#lowpassValue").val() as number, 2000, 24000));
+        $('#lowpassFilterRange').val(logarithmicHzToSliderPos($("#lowpassValue").val() as number, 20, 20000));
         const selectedPeer = $("#peerSelection").val() as string;
-        const stream = remoteConnections.get(selectedPeer)!.mainMediaStream;
-        remoteConnections.get(selectedPeer)!.remoteAudioGraphs.get(stream.id)?.setLowpassFilterFrequency(freq as number);
+        const mid = $("#peerTrackSelection").val() as MID;
+        const audioGraph = remoteConnections.get(selectedPeer)!.remoteMediaStreams.get(mid)!.audioGraph;
+        audioGraph.setLowpassFilterFrequency(freq as number);
     });
 
     $("#playoutDelay").on("change", (_) => {
@@ -469,33 +451,33 @@ const setupExperimentalFeatures = () => {
     $("#visualizeSelection").on("change", (_) => {
         const selectedPeer = $("#peerSelection").val() as string;
         let peer = remoteConnections.get(selectedPeer)!;
+        const mid = $("#peerTrackSelection").val();
         const mode = $("#visualizeSelection").val();
-        const mainMediaStream = peer.mainMediaStream;
-        const audioGraph =  peer.remoteAudioGraphs.get(mainMediaStream.id)!;
+        const audioGraph = peer.remoteMediaStreams.get(mid as MID)!.audioGraph;
         if (audioGraph.isVisualizerRunning()) {
             audioGraph.stopVisualization();
+            //@ts-ignore
+            audioGraph.startVisualization(mode, 1024);
         }
-        //@ts-ignore
-        audioGraph.startVisualization(mode, 2048);
     });
 
     $("#toggleAudioVisualizer").on("click", () => {
         const selectedPeer = $("#peerSelection").val() as string;
         let peer = remoteConnections.get(selectedPeer)!;
-        const mainMediaStream = peer.mainMediaStream;
+        const mid = $("#peerTrackSelection").val();
         const mode = $("#visualizeSelection").val();
-        const audioGraph =  peer.remoteAudioGraphs.get(mainMediaStream.id)!;
+        const audioGraph =  peer.remoteMediaStreams.get(mid as MID)!.audioGraph;
         let running = audioGraph.isVisualizerRunning();
         console.log(running);
         //@ts-ignore
-        running ? audioGraph.stopVisualization() : audioGraph.startVisualization(mode, 2048);
+        running ? audioGraph.stopVisualization() : audioGraph.startVisualization(mode, 1024);
         ($("#toggleAudioVisualizer").get()[0] as HTMLButtonElement).style.backgroundColor = 
             audioGraph.isVisualizerRunning() ? c.ENABLED_COLOR :  c.DISABLED_COLOR;
     });
+    $("#toggleAudioVisualizer").css("backgroundColor", c.DISABLED_COLOR);
 
-    $("peerTrackSelection").on("change", () => {
-        const mid = $("peerTrackSelection").val();
-        updateUiComponents(mid as MID);
+    $("#peerTrackSelection").on("change", () => {
+        updateUiComponents();
     });
 
     $("#openFile").on("click", (_) => {
@@ -505,7 +487,11 @@ const setupExperimentalFeatures = () => {
     $("#file-input").on("change", (_) => {
         const files = ($("#file-input")[0] as HTMLInputElement).files;
         const selectedPeer = $("#peerSelection").val() as string;
-        const peer = remoteConnections.get(selectedPeer);
+        const peer = remoteConnections.get(selectedPeer)!;
+        if (peer.amICurrentlyAddingATrack) {
+            showInfoMessage(infoToast, "error", 5000, "Kann noch keinen neuen Track hinzufügen!");
+            return;
+        }
 
         if (files!.length) {
             let reader = new FileReader();
@@ -514,10 +500,26 @@ const setupExperimentalFeatures = () => {
                     filePlayback.buffer = buffer;
                 });
                 filePlayback.dest = filePlayback.ctx.createMediaStreamDestination();
-                peer!.addAdditionalTrack(filePlayback.dest.stream.getAudioTracks()[0]);
             };
             reader.readAsArrayBuffer(files![0]);
         }
+    });
+
+    $("#finallyAddTrack").on("click", () => {
+        const selectedPeer = $("#peerSelection").val() as string;
+        const peer = remoteConnections.get(selectedPeer)!;
+        const cname = $("#nameForTrackToAdd").val();
+        if (!cname) {
+            showInfoMessage(infoToast, "error", 5000, "Du musst einen Namen für den Track eingeben!");
+            return;
+        }
+        peer!.addAdditionalTrack(filePlayback.dest.stream.getAudioTracks()[0], cname as string);
+        addTrackModal.hide();
+    });
+
+    $("#cancelAddTrack").on("click", () => {
+        $("#nameForTrackToAdd").val(null);
+        addTrackModal.hide();
     });
 
     $("#playAdditionalTrack").on("click", () => {
@@ -550,17 +552,17 @@ const setupExperimentalFeatures = () => {
         $("#checkOutOfBandFEC").attr('disabled', 'disabled');
     }
 
-    $("#checkAGC").attr("checked", "true");
+    $("#checkAGC").prop("checked", true);
     $("#checkAGC").on("click", (_) => {
         applyAudioProcessing({autoGainControl: $("#checkAGC").is(':checked')});
     });
     
-    $("#checkNS").attr("checked", "true");
+    $("#checkNS").prop("checked", true);
     $("#checkNS").on("click", (_) => {
         applyAudioProcessing({noiseSuppression: $("#checkNS").is(':checked')});
     });
     
-    $("#checkEC").attr("checked", "true");
+    $("#checkEC").prop("checked", true);
     $("#checkEC").on("click", (_) => {
         applyAudioProcessing({echoCancellation: $("#checkEC").is(':checked')});
     });
@@ -568,7 +570,7 @@ const setupExperimentalFeatures = () => {
 
     $("#applyParameterChanges").on("click", () => {
         const stereo = $("#checkStereo").is(':checked') ? 1 : 0;
-        const maxbitrate510 = $("#checkMaxBitrate").is(':checked') ? 128000 : 64000;
+        const maxbitrate256 = $("#checkMaxBitrate").is(':checked') ? c.MAX_AVG_OPUS_BITRATE : c.MIN_AVG_OPUS_BITRATE;
         const dtx = $("#checkDtx").is(':checked') ? 1 : 0;
         const inbandFec = $("#checkInbandFEC").is(':checked') ? 1 : 0;
         const preferedCodec = $("#checkOutOfBandFEC").is(':checked') ? "red-fec" : "opus";
@@ -579,7 +581,7 @@ const setupExperimentalFeatures = () => {
 
         remoteConnections.get(selectedPeer)!.applyNewSessionParameters(selectedTrackMID, preferedCodec, {
             stereo: stereo, 
-            maxaveragebitrate: maxbitrate510, 
+            maxaveragebitrate: maxbitrate256, 
             usedtx: dtx, 
             useinbandfec: inbandFec,
             ptime: preferedPTime
@@ -609,15 +611,80 @@ const setupExperimentalFeatures = () => {
             console.log(`Stopped local recording of User ${selectedPeer}`);
         }
     });
+
+    $(`#musicMode`).on("click", (e) => {
+        const element = e.target;
+        const selectedPeer = $("#peerSelection").val() as string;
+        const peer = remoteConnections.get(selectedPeer)!;
+        const mid = $("#peerTrackSelection").val() as MID;
+        const mediaInfo = peer.remoteMediaStreams.get(mid)!;
+        const newMode = mediaInfo.musicMode == "off" ? "agressive" : "off";
+        mediaInfo.musicMode = newMode;
+        peer.datachannel!.send(JSON.stringify(
+            {
+                msg: newMode == "off" ? "music-stop" : "music-start",
+                mid: mid
+            }
+        ));
+
+        element.style.backgroundColor = newMode == "off" ? c.DISABLED_COLOR : c.ENABLED_COLOR;
+        if (newMode == "off") {
+            $("#musicModeParameters").addClass("invisible");
+            peer.applyNewSessionParameters(mid, "opus", {
+                useinbandfec: 1,
+                usedtx: 1,
+                stereo: 0,
+                ptime: 20,
+                maxaveragebitrate: c.MIN_AVG_OPUS_BITRATE
+            });
+        } else {
+            $("#musicModeParameters").removeClass("invisible");
+            peer.applyNewSessionParameters(mid, "opus", {
+                useinbandfec: 1,
+                usedtx: 0,
+                stereo: 0,
+                ptime: 10,
+                maxaveragebitrate: c.MAX_AVG_OPUS_BITRATE
+            });
+        }
+    });
+    $(`#musicMode`).css("backgroundColor", c.DISABLED_COLOR);
 };
 
-const updateUiComponents = (mid: MID) => {
+const updateUiComponents = () => {
     const selectedPeer = $("#peerSelection").val() as string;
+    const mid = $("#peerTrackSelection").val() as MID;
     const peer = remoteConnections.get(selectedPeer)!;
-    const codecParameters = peer.opusConfigurations.get(mid);
-    const proccesing = peer.mainMediaStream.getAudioTracks()[0].getSettings();
-    const delay = peer.set
+    const mediaInfo = peer.remoteMediaStreams.get(mid)!;
 
+    const codecParameters = mediaInfo.opusParams;
+    const preferedCodec = mediaInfo.preferecCodec;
+    const delay = mediaInfo.playoutDelay;
+    const lowPassFilterFreq = mediaInfo.audioGraph!.getLowpassFilterFrequency();
+    const highpassFilterFreq = mediaInfo.audioGraph!.getHighpassFilterFrequency();
+    const musicMode = mediaInfo.musicMode;
+
+    $("#playoutDelay").val(delay * 1000);
+    $("#checkInbandFEC").prop("checked", codecParameters.useinbandfec == 1);
+    $("#checkOutOfBandFEC").prop("checked", preferedCodec == "red-fec");
+    $("#checkDtx").prop("checked", codecParameters.usedtx == 1 );
+    $("#checkMaxBitrate").prop("checked", codecParameters.maxaveragebitrate == c.MAX_AVG_OPUS_BITRATE);
+    $("#checkStereo").prop("checked", codecParameters.stereo == 1);
+    $("lowpassFilterRange").val(lowPassFilterFreq);
+    $("lowpassValue").val(lowPassFilterFreq);
+    $("highpassFilterRange").val(highpassFilterFreq);
+    $("highpassValue").val(highpassFilterFreq);
+
+    peer.remoteMediaStreams.forEach(info => {
+        const audioGraph = info.audioGraph!;
+        if (audioGraph.isVisualizerRunning()) {
+            audioGraph.stopVisualization();
+        }
+    });
+    ($("#toggleAudioVisualizer").get()[0] as HTMLButtonElement).style.backgroundColor = c.DISABLED_COLOR;
+
+    console.log(musicMode);
+    ($("#musicMode").get()[0] as HTMLButtonElement).style.backgroundColor = musicMode == "off" ? c.DISABLED_COLOR : c.ENABLED_COLOR;
 }
 
 const switchUiToCallMode = async (roomId: string, newUserId: string) => {

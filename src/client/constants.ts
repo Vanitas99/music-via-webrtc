@@ -14,6 +14,10 @@ export const isDev = process.env.NODE_ENV == "development";
 export const PROD_URL = "https://music-via-webrtc.herokuapp.com/";
 export const TEST_URL = "http://localhost:5500";
 
+export const MAX_AVG_OPUS_BITRATE = 256000;
+export const MIN_AVG_OPUS_BITRATE = 32000;
+
+
 // Kostenlose Stun Server von Google. Nicht mehr als 2 nutzen.
 export const ICE_SERVERS = {
     iceServers: [

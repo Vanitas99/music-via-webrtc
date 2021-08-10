@@ -3,8 +3,8 @@
     background: #6e6e6e;
     color: #fff;
     transition: all 0.3s;
-    min-width: 20vw;
-    max-width: 20vw;
+    min-width: 35vw;
+    max-width: 35vw;
     height: 100vh;
     padding: 0 2% 0 2%;
     overflow-y: auto;
@@ -12,7 +12,7 @@
 }
 
 #sidebar.active {
-    margin-left: -20vw;
+    margin-left: -35vw;
 }
 
 #sidebar .sidebar-header {

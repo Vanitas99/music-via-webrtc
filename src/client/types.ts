@@ -1,11 +1,11 @@
-import { Socket } from "socket.io-client";
 import { WavRecorder } from "./Recorder";
-import { CustomAudioVisualizer, CustomAudioGraph } from "./AudioAnalyzer";
+import { CustomAudioGraph } from "./AudioAnalyzer";
 
 export type MuteState = "muted" | "unmuted";
 export type SharingState = "sharing" | "not-sharing";
 export type StreamID = string;
 export type MID = string;
+export type TrackID = string;
 export type OfferType = "initial" | "negotiation"
 
 export interface IMusicPeerConnection {
@@ -78,3 +78,5 @@ export type OpusCodecParameters = {
 };
 
 export type PreferedCodec = "opus" | "red-fec";
+
+export type DataChannelMsgType = "sdp" | "music-start" | "music-stop" | "requestTrackName" | "sendTrackName";

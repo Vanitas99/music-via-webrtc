@@ -7,30 +7,53 @@ export class CustomAudioGraph {
     private srcNode: MediaStreamAudioSourceNode;
     private lowpassFilter: BiquadFilterNode;
     private highpassFilter: BiquadFilterNode;
+    private gainFilter: GainNode;
 
     private visualizer: CustomAudioVisualizer | null;
 
     constructor(srcStream: MediaStream) {
         this.audioCtx = new window.AudioContext();
+
         this.lowpassFilter = this.audioCtx.createBiquadFilter();
         this.lowpassFilter.type = "lowpass";
-        this.setLowpassFilterFrequency(24000)
+        this.setLowpassFilterFrequency(20000);
+
         this.highpassFilter = this.audioCtx.createBiquadFilter();
         this.highpassFilter.type = "highpass";
-        this.setHighpassFilterFrequency(0);
+        this.setHighpassFilterFrequency(20);
+
+        this.gainFilter = this.audioCtx.createGain();
+        this.gainFilter.gain.setValueAtTime(1, this.audioCtx.currentTime);
+        
         this.srcNode = this.audioCtx.createMediaStreamSource(srcStream);
-        this.srcNode.connect(this.lowpassFilter).connect(this.highpassFilter).connect(this.audioCtx.destination);
+        this.srcNode.connect(this.lowpassFilter).connect(this.highpassFilter).connect(this.gainFilter).connect(this.audioCtx.destination);
         this.audioCtx.resume();
-        this.visualizer = null;
-        this.startVisualization("bars", 2048);
+        this.visualizer = new CustomAudioVisualizer(this.audioCtx, 2048);
+
     }
 
     public setLowpassFilterFrequency = (freq: number) => {
-        this.lowpassFilter.frequency.value = freq;
+        this.lowpassFilter.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
     };
 
     public setHighpassFilterFrequency = (freq: number) => {
-        this.highpassFilter.frequency.value = freq;
+        this.highpassFilter.frequency.setValueAtTime(freq, this.audioCtx.currentTime);
+    };
+
+    public setGain = (gain: number) => {
+        this.gainFilter.gain.setValueAtTime(gain, this.audioCtx.currentTime);
+    };
+
+    public getGain = () => {
+        return this.gainFilter.gain;
+    };
+
+    public getLowpassFilterFrequency = () => {
+        return this.lowpassFilter.frequency.value;
+    };
+
+    public getHighpassFilterFrequency = () => {
+        return this.highpassFilter.frequency.value;
     };
     
     public startGraph = () => {
@@ -43,13 +66,13 @@ export class CustomAudioGraph {
 
     public startVisualization = (mode: "bars" | "spectro", fftSize: number) => {
         this.visualizer = new CustomAudioVisualizer(this.audioCtx, fftSize);
-        this.highpassFilter.connect(this.visualizer.getAnalyserNode());
+        this.gainFilter.connect(this.visualizer.getAnalyserNode());
         this.visualizer.startVisualization(mode);
     };
 
     public stopVisualization = () => {
         if (this.visualizer) {
-            this.highpassFilter.disconnect(this.visualizer?.getAnalyserNode());
+            this.gainFilter.disconnect(this.visualizer?.getAnalyserNode());
             this.visualizer?.stopVisualization();
         }
     };
@@ -111,9 +134,9 @@ export class CustomAudioVisualizer {
         const animationLoop = () => {
             if (this.running) {
                 window.requestAnimationFrame(animationLoop);
+                this.audioAnalyser.getByteFrequencyData(data);
+                drawMethod(data);
             }
-            this.audioAnalyser.getByteFrequencyData(data);
-            drawMethod(data);
         }
         this.running = true;
         animationLoop();
@@ -121,7 +144,7 @@ export class CustomAudioVisualizer {
 
     public stopVisualization = () => {
         this.running = false;
-        this.drawCtx.fillStyle = 'hsl(47, 1%, 93%)';
+        this.drawCtx.fillStyle = '#6e6e6e';
         this.drawCtx.clearRect(0,0,this.width, this.height);
         this.drawCtx.fillRect(0, 0, this.width, this.height);
     }
@@ -135,9 +158,9 @@ export class CustomAudioVisualizer {
             let rat = data[i] / 255;
             let hue = Math.round((rat * 120) + 280 % 360);
             let sat = '100%';
-            let lit = (rat > 0) ? (10 + (70 * rat)) + "%" : 100 + '%';
+            let lit = (10 + (70 * rat)) + "%";
             this.drawCtx.beginPath();
-            this.drawCtx.strokeStyle = `hsl(${hue}, ${sat}, ${lit})`;
+            this.drawCtx.strokeStyle = (rat > 0) ? `hsl(${hue}, ${sat}, ${lit})` : '#6e6e6e';
             this.drawCtx.moveTo(this.width - 1, this.height - (i * h));
             this.drawCtx.lineTo(this.width -1, this.height - (i * h + h));
             this.drawCtx.stroke();

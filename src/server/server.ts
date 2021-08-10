@@ -59,7 +59,6 @@ const deleteUnusedRooms = async () => {
     rooms.forEach(async (_, roomId: RoomID) => {
         const socketRoomName = 'room-' + roomId;
         const sockets = await io.in(socketRoomName).fetchSockets();
-        console.log('ROOM: ' + roomId + " " + sockets.length + " Sockets")
         if (sockets.length == 0) {
             rooms.delete(roomId);
             console.log("Deleting room " + roomId);
